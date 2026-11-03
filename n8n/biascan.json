@@ -47,7 +47,7 @@
         "jsCode": "const req = $('Webhook tìm sách').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\n// n8n.thuanbt.id.vn chạy sau Fly proxy: chỉ fly-client-ip do proxy đặt; cf-connecting-ip / x-forwarded-for client tự gửi được.\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['fly-client-ip'] || '').trim()\n  || String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst MAX_IMAGE_BYTES = 4 * 1024 * 1024;\nconst IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];\n\nlet input_error = '';\nconst query = typeof body.query === 'string' ? body.query.replace(/\\s+/g, ' ').trim() : '';\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nlet image_mime = '';\nlet image_b64 = '';\n\nif (body.query !== undefined && body.query !== null && typeof body.query !== 'string') {\n  input_error = 'Trường query phải là chuỗi.';\n} else if (query.length > 1000) {\n  input_error = 'Mô tả quá dài (tối đa 1000 ký tự).';\n}\n\nif (!input_error && typeof body.image === 'string' && body.image.trim() !== '') {\n  const raw = body.image.trim();\n  const m = raw.match(/^data:([a-z0-9.+\\/-]+);base64,(.*)$/is);\n  image_mime = m ? m[1].toLowerCase() : 'image/jpeg';\n  image_b64 = (m ? m[2] : raw).replace(/\\s+/g, '');\n  if (image_mime === 'image/jpg') image_mime = 'image/jpeg';\n  const padding = image_b64.endsWith('==') ? 2 : image_b64.endsWith('=') ? 1 : 0;\n  const bytes = Math.floor((image_b64.length * 3) / 4) - padding;\n  if (!IMAGE_MIMES.includes(image_mime)) {\n    input_error = 'Định dạng ảnh không hỗ trợ (chỉ nhận JPEG, PNG, WEBP, HEIC).';\n  } else if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image_b64)) {\n    input_error = 'Ảnh không phải base64 hợp lệ.';\n  } else if (bytes > MAX_IMAGE_BYTES) {\n    input_error = 'Ảnh lớn hơn 4 MB, hãy nén lại trước khi gửi.';\n  }\n} else if (!input_error && body.image !== undefined && body.image !== null && typeof body.image !== 'string') {\n  input_error = 'Trường image phải là chuỗi data URL base64.';\n}\n\nif (!input_error && !session_id) input_error = 'Thiếu session_id.';\nelse if (!input_error && session_id.length > 200) input_error = 'session_id quá dài.';\nif (!input_error && !query && !image_b64) input_error = 'Cần ít nhất một trong hai: query hoặc image.';\n\nconst has_image = !input_error && image_b64 !== '';\n\nreturn [{\n  json: {\n    t_start: Date.now(),\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    query,\n    session_id,\n    has_image,\n    image_mime: has_image ? image_mime : '',\n    image_b64: has_image ? image_b64 : '',\n    cfg: {\n      ocr_model: String(cfg.ocr_model || 'gemini-flash-latest').trim(),\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      embed_model: String(cfg.embed_model || 'gemini-embedding-2').trim(),\n      embed_dims: posInt(cfg.embed_dims, 768),\n      top_k: Math.min(posInt(cfg.top_k, 10), 50),\n      rerank_k: Math.min(posInt(cfg.rerank_k, 3), 10),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n      image_search_enabled: String(cfg.image_search_enabled || '').trim().toLowerCase() === 'true',\n    },\n  },\n}];\n"
       },
       "id": "211a7112-8700-5515-ad3a-2b0fb09463c4",
-      "name": "Kiểm tra token & đầu vào",
+      "name": "Kiểm tra token và đầu vào",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -96,7 +96,7 @@
         "operation": "executeQuery",
         "query": "select public.hit_rate_limit($1, $2::int, $3::int) as limited;",
         "options": {
-          "queryReplacement": "={{ $('Kiểm tra token & đầu vào').first().json.ip }},{{ $('Kiểm tra token & đầu vào').first().json.cfg.per_min }},{{ $('Kiểm tra token & đầu vào').first().json.cfg.per_day }}"
+          "queryReplacement": "={{ $json.ip }},{{ $json.cfg.per_min }},{{ $json.cfg.per_day }}"
         }
       },
       "id": "fe7e738b-aa04-5686-a31d-c328a4c0b224",
@@ -162,7 +162,7 @@
           "conditions": [
             {
               "id": "f974896d-3a61-5ca2-a28b-5d71b066331f",
-              "leftValue": "={{ $('Kiểm tra token & đầu vào').first().json.input_error === '' }}",
+              "leftValue": "={{ $('Kiểm tra token và đầu vào').first().json.input_error === '' }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -188,7 +188,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Kiểm tra token & đầu vào').first().json.auth_message } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Kiểm tra token và đầu vào').first().json.auth_message } }) }}",
         "options": {
           "responseCode": 401
         }
@@ -222,7 +222,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Kiểm tra token & đầu vào').first().json.input_error } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Kiểm tra token và đầu vào').first().json.input_error } }) }}",
         "options": {
           "responseCode": 400
         }
@@ -265,7 +265,7 @@
           "conditions": [
             {
               "id": "005d9f1c-9566-542b-87ba-e298ad9d50e7",
-              "leftValue": "={{ $('Kiểm tra token & đầu vào').first().json.has_image }}",
+              "leftValue": "={{ $('Kiểm tra token và đầu vào').first().json.has_image }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -290,7 +290,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Kiểm tra token & đầu vào').first().json;\nconst prompt = [\n  'Ảnh là bìa trước của một cuốn sách, có thể bị nghiêng, mờ, lóa hoặc che một phần.',\n  'Đọc chữ trên bìa và trả về JSON với các trường:',\n  '- title: tên sách đúng nguyên văn trên bìa (giữ dấu tiếng Việt), chuỗi rỗng nếu không đọc được;',\n  '- author: tác giả / dịch giả nếu thấy, chuỗi rỗng nếu không;',\n  '- publisher: nhà xuất bản hoặc đơn vị phát hành (logo, chữ nhỏ) nếu thấy, chuỗi rỗng nếu không;',\n  '- other_text: chữ đáng chú ý khác như phụ đề, tên bộ sách, tối đa 200 ký tự.',\n  'Chỉ ghi chữ thực sự có trên ảnh, không đoán, không bịa.',\n].join('\\n');\n\nconst str = { type: 'STRING' };\nreturn [{\n  json: {\n    ...ctx,\n    t_ocr: Date.now(),\n    ocr_request: {\n      contents: [{\n        role: 'user',\n        parts: [\n          { inlineData: { mimeType: ctx.image_mime, data: ctx.image_b64 } },\n          { text: prompt },\n        ],\n      }],\n      generationConfig: {\n        temperature: 0,\n        responseMimeType: 'application/json',\n        responseSchema: {\n          type: 'OBJECT',\n          properties: { title: str, author: str, publisher: str, other_text: str },\n          required: ['title', 'author', 'publisher', 'other_text'],\n        },\n      },\n    },\n  },\n}];\n"
+        "jsCode": "const ctx = $('Kiểm tra token và đầu vào').first().json;\nconst prompt = [\n  'Ảnh là bìa trước của một cuốn sách, có thể bị nghiêng, mờ, lóa hoặc che một phần.',\n  'Đọc chữ trên bìa và trả về JSON với các trường:',\n  '- title: tên sách đúng nguyên văn trên bìa (giữ dấu tiếng Việt), chuỗi rỗng nếu không đọc được;',\n  '- author: tác giả / dịch giả nếu thấy, chuỗi rỗng nếu không;',\n  '- publisher: nhà xuất bản hoặc đơn vị phát hành (logo, chữ nhỏ) nếu thấy, chuỗi rỗng nếu không;',\n  '- other_text: chữ đáng chú ý khác như phụ đề, tên bộ sách, tối đa 200 ký tự.',\n  'Chỉ ghi chữ thực sự có trên ảnh, không đoán, không bịa.',\n].join('\\n');\n\nconst str = { type: 'STRING' };\nreturn [{\n  json: {\n    ...ctx,\n    t_ocr: Date.now(),\n    ocr_request: {\n      contents: [{\n        role: 'user',\n        parts: [\n          { inlineData: { mimeType: ctx.image_mime, data: ctx.image_b64 } },\n          { text: prompt },\n        ],\n      }],\n      generationConfig: {\n        temperature: 0,\n        responseMimeType: 'application/json',\n        responseSchema: {\n          type: 'OBJECT',\n          properties: { title: str, author: str, publisher: str, other_text: str },\n          required: ['title', 'author', 'publisher', 'other_text'],\n        },\n      },\n    },\n  },\n}];\n"
       },
       "id": "b2752295-ddde-5b84-9c80-d4157858e799",
       "name": "Chuẩn bị OCR",
@@ -347,7 +347,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Kiểm tra token & đầu vào').first().json;\nreturn [{ json: { ...ctx, ocr_text: null, ocr_title: '', ocr_ms: 0 } }];\n"
+        "jsCode": "const ctx = $('Kiểm tra token và đầu vào').first().json;\nreturn [{ json: { ...ctx, ocr_text: null, ocr_title: '', ocr_ms: 0 } }];\n"
       },
       "id": "67f783b7-005b-5b79-8daf-9b5806acd757",
       "name": "Bỏ qua OCR",
@@ -764,7 +764,7 @@
         "jsCode": "const req = $('Webhook chat').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\n// n8n.thuanbt.id.vn chạy sau Fly proxy: chỉ fly-client-ip do proxy đặt; cf-connecting-ip / x-forwarded-for client tự gửi được.\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['fly-client-ip'] || '').trim()\n  || String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nconst message = typeof body.message === 'string' ? body.message.trim() : '';\nlet context_ids = [];\nlet input_error = '';\n\nif (!session_id) input_error = 'Thiếu session_id.';\nelse if (session_id.length > 200) input_error = 'session_id quá dài.';\nelse if (!message) input_error = 'Thiếu message.';\nelse if (message.length > 2000) input_error = 'Tin nhắn quá dài (tối đa 2000 ký tự).';\nelse if (body.context_ids !== undefined && body.context_ids !== null) {\n  if (!Array.isArray(body.context_ids) || body.context_ids.some((id) => typeof id !== 'string')) {\n    input_error = 'context_ids phải là mảng chuỗi.';\n  } else {\n    context_ids = [...new Set(body.context_ids.map((id) => id.trim()).filter(Boolean))].slice(0, 20);\n  }\n}\n\nreturn [{\n  json: {\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    session_id,\n    message,\n    context_ids,\n    cfg: {\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n    },\n  },\n}];\n"
       },
       "id": "856759d0-0e02-549a-8c2c-6b42c959ed36",
-      "name": "Chat: Kiểm tra token & đầu vào",
+      "name": "Chat: Kiểm tra token và đầu vào",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -813,7 +813,7 @@
         "operation": "executeQuery",
         "query": "select public.hit_rate_limit($1, $2::int, $3::int) as limited;",
         "options": {
-          "queryReplacement": "={{ $('Chat: Kiểm tra token & đầu vào').first().json.ip }},{{ $('Chat: Kiểm tra token & đầu vào').first().json.cfg.per_min }},{{ $('Chat: Kiểm tra token & đầu vào').first().json.cfg.per_day }}"
+          "queryReplacement": "={{ $json.ip }},{{ $json.cfg.per_min }},{{ $json.cfg.per_day }}"
         }
       },
       "id": "da0d7cac-f6a7-528c-8191-0fe13401f86c",
@@ -879,7 +879,7 @@
           "conditions": [
             {
               "id": "3682d0fd-77e3-576f-8312-9fef1bd64e57",
-              "leftValue": "={{ $('Chat: Kiểm tra token & đầu vào').first().json.input_error === '' }}",
+              "leftValue": "={{ $('Chat: Kiểm tra token và đầu vào').first().json.input_error === '' }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -905,7 +905,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Chat: Kiểm tra token & đầu vào').first().json.auth_message } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Chat: Kiểm tra token và đầu vào').first().json.auth_message } }) }}",
         "options": {
           "responseCode": 401
         }
@@ -939,7 +939,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Chat: Kiểm tra token & đầu vào').first().json.input_error } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Chat: Kiểm tra token và đầu vào').first().json.input_error } }) }}",
         "options": {
           "responseCode": 400
         }
@@ -975,7 +975,7 @@
         "operation": "executeQuery",
         "query": "select coalesce(json_agg(json_build_object(\n  'image_id', b.image_id, 'title', b.title, 'author', b.author, 'publisher', b.publisher\n) order by x.ord), '[]'::json) as books\nfrom jsonb_array_elements_text($1::jsonb) with ordinality as x(id, ord)\njoin public.books b on b.image_id = x.id;",
         "options": {
-          "queryReplacement": "={{ JSON.stringify($('Chat: Kiểm tra token & đầu vào').first().json.context_ids) }}"
+          "queryReplacement": "={{ JSON.stringify($('Chat: Kiểm tra token và đầu vào').first().json.context_ids) }}"
         }
       },
       "id": "6ec6a9cf-9c8f-53bd-afb7-c938e9684446",
@@ -996,7 +996,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Chat: Kiểm tra token & đầu vào').first().json;\nlet books = $input.first().json.books;\nif (typeof books === 'string') books = JSON.parse(books);\nif (!Array.isArray(books)) books = [];\n\nconst lines = books.map((b) => `- [${b.image_id}] ${b.title}${b.author ? ` — ${b.author}` : ''}${b.publisher ? ` (${b.publisher})` : ''}`);\nconst chat_input = lines.length\n  ? `Sách khách đang xem trên trang:\\n${lines.join('\\n')}\\n\\nTin nhắn của khách: ${ctx.message}`\n  : ctx.message;\n\nreturn [{\n  json: {\n    session_id: ctx.session_id,\n    chat_model: ctx.cfg.chat_model,\n    chat_input,\n  },\n}];\n"
+        "jsCode": "const ctx = $('Chat: Kiểm tra token và đầu vào').first().json;\nlet books = $input.first().json.books;\nif (typeof books === 'string') books = JSON.parse(books);\nif (!Array.isArray(books)) books = [];\n\nconst lines = books.map((b) => `- [${b.image_id}] ${b.title}${b.author ? ` — ${b.author}` : ''}${b.publisher ? ` (${b.publisher})` : ''}`);\nconst chat_input = lines.length\n  ? `Sách khách đang xem trên trang:\\n${lines.join('\\n')}\\n\\nTin nhắn của khách: ${ctx.message}`\n  : ctx.message;\n\nreturn [{\n  json: {\n    session_id: ctx.session_id,\n    chat_model: ctx.cfg.chat_model,\n    chat_input,\n  },\n}];\n"
       },
       "id": "8c129488-a200-5c7c-b185-dd00f3240de6",
       "name": "Chuẩn bị prompt",
@@ -1434,7 +1434,7 @@
       "main": [
         [
           {
-            "node": "Kiểm tra token & đầu vào",
+            "node": "Kiểm tra token và đầu vào",
             "type": "main",
             "index": 0
           }
@@ -1448,7 +1448,7 @@
         ]
       ]
     },
-    "Kiểm tra token & đầu vào": {
+    "Kiểm tra token và đầu vào": {
       "main": [
         [
           {
@@ -1877,7 +1877,7 @@
       "main": [
         [
           {
-            "node": "Chat: Kiểm tra token & đầu vào",
+            "node": "Chat: Kiểm tra token và đầu vào",
             "type": "main",
             "index": 0
           }
@@ -1891,7 +1891,7 @@
         ]
       ]
     },
-    "Chat: Kiểm tra token & đầu vào": {
+    "Chat: Kiểm tra token và đầu vào": {
       "main": [
         [
           {
