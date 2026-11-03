@@ -48,7 +48,7 @@ Boost: `similarity(title_norm, query_norm) >= 0.6` cộng vào score (text) đ�
 ### Bảng phụ
 
 - `app_config(key text primary key, value text, note text)` — seed:
-  `chat_model=gemini-2.5-flash`, `ocr_model=gemini-2.5-flash`,
+  `chat_model=gemini-2.5-flash-lite`, `ocr_model=gemini-2.5-flash`,
   `embed_model=gemini-embedding-2`, `embed_dims=768`, `top_k=10`, `rerank_k=3`,
   `desc_max_chars=2000`, `rate_limit_per_min=10`, `rate_limit_per_day=200`.
 - `rate_limits(ip text, window_start timestamptz, count int, primary key(ip, window_start))`

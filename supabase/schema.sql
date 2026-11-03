@@ -56,7 +56,7 @@ create table if not exists public.app_config (
 );
 
 insert into public.app_config (key, value, note) values
-  ('chat_model',         'gemini-2.5-flash', 'Model Gemini trả lời chat + rerank'),
+  ('chat_model',         'gemini-2.5-flash-lite', 'Model Gemini trả lời chat + rerank'),
   ('ocr_model',          'gemini-2.5-flash', 'Model Gemini đọc chữ trên ảnh bìa'),
   ('embed_model',        'gemini-embedding-2',  'Model embedding; đổi thì phải ingest lại toàn bộ'),
   ('embed_dims',         '768',                 'Số chiều vector; phải khớp vector(768) của bảng books'),
