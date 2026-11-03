@@ -1044,6 +1044,7 @@
   visibility: hidden;
   opacity: 0;
   padding-bottom: env(safe-area-inset-bottom);
+  padding-right: env(safe-area-inset-right);
 }
 .drawer__head {
   display: flex;

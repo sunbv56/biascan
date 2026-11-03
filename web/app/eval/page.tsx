@@ -138,7 +138,7 @@ export default async function EvalPage() {
             </div>
             <div>
               <dt>Chế độ</dt>
-              <dd>Văn bản: OCR rồi tìm theo chữ. Ảnh: tìm theo embedding ảnh bìa. Kết hợp: gộp hai danh sách bằng RRF.</dd>
+              <dd>Văn bản: tìm theo chữ — chữ OCR từ ảnh bìa, hoặc chính câu mô tả. Ảnh: tìm theo embedding ảnh bìa. Kết hợp: gộp hai danh sách bằng RRF.</dd>
             </div>
           </dl>
         </div>
