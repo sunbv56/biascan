@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 
-from common import DATA_DIR, load_books, read_jsonl, sample, settings, write_jsonl
+from common import CATALOG_MAX, DATA_DIR, load_books, read_jsonl, sample, settings, write_jsonl
 from textnorm import normalize
 
 DEFAULT_SEED = 20261103
@@ -188,7 +188,7 @@ def check_real_photo(books, out_dir: Path, log=print) -> int:
             log(f"dòng {i}: không thấy ảnh {r.get('query_image')}")
             errors += 1
         if r.get("expected_id") not in ids:
-            log(f"dòng {i}: expected_id {r.get('expected_id')} không có trong dataset")
+            log(f"dòng {i}: expected_id {r.get('expected_id')} không có trong kho đánh giá (xem --catalog-max)")
             errors += 1
     log(f"real_photo: {len(rows)} dòng, {errors} lỗi")
     return 1 if errors else 0
@@ -206,16 +206,21 @@ def find_books(books, text: str, limit: int = 10):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("set", choices=["image_aug", "text_query", "real_photo"])
-    ap.add_argument("--n", type=int, help="số mẫu (mặc định 300 ảnh / 100 câu)")
+    ap.add_argument("--n", type=int, help="số mẫu (mặc định 100 ảnh / 100 câu)")
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--data-dir", type=Path, default=DATA_DIR)
-    ap.add_argument("--dataset", type=Path, help="đường dẫn train.jsonl có sẵn (mặc định tải từ HF)")
+    ap.add_argument("--dataset", type=Path, help="file train.parquet/.jsonl có sẵn (mặc định tải sunbv56/biascan-950 từ HF)")
+    ap.add_argument("--catalog-max", type=int, default=CATALOG_MAX,
+                    help="chỉ lấy sách fahasa_0 … fahasa_<N-1> (mặc định 950, đúng kho trong DB)")
     ap.add_argument("--mock", action="store_true", help="text_query: không gọi Gemini, dùng câu giả để thử luồng")
     ap.add_argument("--min-interval", type=float, default=4.5, help="giây tối thiểu giữa 2 lần gọi Gemini")
     ap.add_argument("--find", help="real_photo: tìm image_id theo tên sách")
     args = ap.parse_args(argv)
 
-    books = load_books(args.dataset)
+    books = load_books(args.dataset, args.catalog_max)
+    if not books:
+        print("Không có sách nào trong kho sau khi lọc --catalog-max.")
+        return 1
     out_dir = args.data_dir / args.set
 
     if args.set == "image_aug":
@@ -224,7 +229,7 @@ def main(argv=None) -> int:
         session = requests.Session()
         cache = args.data_dir / "_orig"
         build_image_aug(
-            books, args.n or 300, args.seed, out_dir,
+            books, args.n or 100, args.seed, out_dir,
             lambda b: fetch_cover(b["image_url"], cache, b["image_id"], session),
         )
         return 0

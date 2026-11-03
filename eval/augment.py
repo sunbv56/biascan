@@ -86,8 +86,8 @@ def to_jpeg_bytes(img: Image.Image, quality: int) -> bytes:
     return buf.getvalue()
 
 
-def client_compress(data: bytes, max_side: int = 1600, quality: int = 85) -> bytes:
-    """Giống web nén ảnh trước khi gửi (≤ 4 MB)."""
+def client_compress(data: bytes, max_side: int = 768, quality: int = 80) -> bytes:
+    """Giống web nén ảnh trước khi gửi: cạnh dài ≤ 768 px, JPEG q80, ≤ 4 MB."""
     img = Image.open(io.BytesIO(data))
     img = img.convert("RGB")
     img.thumbnail((max_side, max_side))

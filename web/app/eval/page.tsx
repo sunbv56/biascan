@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { loadEvalResults, MODE_LABELS, SET_LABELS } from "@/lib/eval";
 import { formatDecimal, formatInt, formatMs, formatPercent } from "@/lib/format";
+import { DATASET_NAME, DATASET_URL, N_BOOKS } from "@/lib/site";
 import type { EvalRun, EvalSet } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -47,6 +48,13 @@ export default async function EvalPage() {
           {measured
             ? `Số đo trên kho ${formatInt(data!.n_books)} đầu sách. Mỗi dòng là một bộ câu hỏi chạy với một chế độ tìm.`
             : "Bộ đánh giá chưa chạy nên bảng dưới để trống có chủ đích. Khi script trong eval/ chạy xong, nó ghi đè tệp kết quả và trang này hiện số thật."}
+        </p>
+        <p className="eval-dataset">
+          Mọi bộ câu hỏi chỉ lấy sách trong kho cố định {formatInt(N_BOOKS)} cuốn, công bố ở{" "}
+          <a href={DATASET_URL} target="_blank" rel="noopener noreferrer">
+            {DATASET_NAME}
+          </a>{" "}
+          trên Hugging Face — ai cũng tải về chạy lại được.
         </p>
         {!data && <p className="field__error">Không đọc được tệp /eval/results.json.</p>}
       </header>
@@ -144,7 +152,8 @@ export default async function EvalPage() {
         </div>
         {data && (
           <p className="mono-note">
-            Mô hình cấu hình: OCR {data.models.ocr || "—"} · embedding {data.models.embed || "—"} · xếp hạng {data.models.rerank || "—"}
+            Mô hình cấu hình: OCR {data.models.ocr || "—"} · embedding {data.models.embed || "—"}
+            {data.models.rerank ? ` · xếp hạng ${data.models.rerank}` : ""}
           </p>
         )}
       </section>

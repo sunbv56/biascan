@@ -31,6 +31,17 @@ export interface SearchResponse {
   ocr_text: string | null;
   results: SearchResult[];
   timings_ms: SearchTimings;
+  cached: boolean;
+}
+
+export interface ExplainRequest {
+  session_id: string;
+  query: string;
+  image_ids: string[];
+}
+
+export interface ExplainResponse {
+  reasons: Record<string, string>;
 }
 
 export interface ChatRequest {
@@ -48,6 +59,7 @@ export interface ChatResponse {
 export type ApiErrorCode =
   | "unauthorized"
   | "rate_limited"
+  | "quota_exhausted"
   | "bad_request"
   | "upstream"
   | "timeout"

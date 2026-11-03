@@ -53,9 +53,9 @@ export async function loadEvalResults(): Promise<EvalResults | null> {
 }
 
 export const SET_LABELS: Record<EvalSet, { name: string; detail: string }> = {
-  image_aug: { name: "Ảnh bìa biến dạng", detail: "300 ảnh bìa gốc bị xoay, cắt, làm mờ, chỉnh sáng tối — giả ảnh chụp điện thoại." },
-  text_query: { name: "Câu mô tả", detail: "100 câu “sách về…” do Gemini viết từ mô tả sách, cấm chứa tên sách." },
-  real_photo: { name: "Ảnh chụp thật", detail: "Khoảng 20 ảnh tự chụp sách thật: góc nghiêng, bóng tay, ánh đèn." },
+  image_aug: { name: "Ảnh bìa biến dạng", detail: "100 ảnh bìa gốc của sách trong kho, bị xoay, cắt, làm mờ, chỉnh sáng tối — giả ảnh chụp điện thoại." },
+  text_query: { name: "Câu mô tả", detail: "100 câu “sách về…” do Gemini viết từ mô tả của sách trong kho, cấm chứa tên sách." },
+  real_photo: { name: "Ảnh chụp thật", detail: "Khoảng 20 ảnh tự chụp sách thật có trong kho: góc nghiêng, bóng tay, ánh đèn." },
 };
 
 export const MODE_LABELS: Record<EvalMode, string> = {

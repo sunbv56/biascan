@@ -12,8 +12,13 @@ python3 -m venv .venv          # đã thử với Python 3.14; nếu thiếu whe
 cp .env.example .env           # điền GEMINI_API_KEY, DATABASE_URL, BIASCAN_TOKEN...
 ```
 
-Dữ liệu sách tự tải từ HF (`sunbv56/vi-OCR_VQA-desc`, file `train.jsonl` ~100 MB, lưu cache của
-`huggingface_hub`). Dữ liệu sinh ra nằm trong `eval/data/` (đã gitignore, không commit).
+Dữ liệu sách tự tải từ HF ([`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950),
+file `data/train.parquet`, lưu cache của `huggingface_hub`); có file sẵn thì đặt `BIASCAN_DATASET=<đường dẫn .parquet
+hoặc .jsonl>`. Dữ liệu sinh ra nằm trong `eval/data/` (đã gitignore, không commit).
+
+**Chỉ đánh giá trong kho 950 sách.** DB chỉ có `fahasa_0` … `fahasa_949`, nên mọi bộ đánh giá chỉ lấy sách trong
+khoảng này: `build_sets.py` lọc sách trước khi chọn mẫu, `run_eval.py` bỏ mẫu có đáp án ngoài kho (và với `--via direct`
+bỏ thêm mẫu có đáp án không nằm trong bảng `books`). Cả hai nhận `--catalog-max N` (mặc định 950) để đổi kích thước kho.
 
 ## 1. Tạo bộ đánh giá — `build_sets.py`
 
@@ -21,9 +26,9 @@ Seed cố định (`--seed 20261103`), chạy lại cho ra đúng các sách và
 
 | Lệnh | Kết quả |
 |---|---|
-| `python build_sets.py image_aug` | 300 ảnh `data/image_aug/*.jpg` + `manifest.jsonl` `{query_image, expected_id, aug}` |
+| `python build_sets.py image_aug` | 100 ảnh `data/image_aug/*.jpg` + `manifest.jsonl` `{query_image, expected_id, aug}` |
 | `python build_sets.py text_query` | 100 câu `data/text_query/manifest.jsonl` `{query, expected_id}` + `rejected.jsonl` |
-| `python build_sets.py real_photo` | Kiểm `data/real_photo/manifest.jsonl` (ảnh có thật, id có trong dataset) |
+| `python build_sets.py real_photo` | Kiểm `data/real_photo/manifest.jsonl` (ảnh có thật, id nằm trong kho 950 sách) |
 | `python build_sets.py real_photo --find "đắc nhân tâm"` | Tra `image_id` theo tên sách để điền manifest |
 
 `--n` đổi số mẫu, `--mock` (text_query) dùng câu giả không gọi Gemini và ghi sang
@@ -32,14 +37,14 @@ Seed cố định (`--seed 20261103`), chạy lại cho ra đúng các sách và
 
 ### Ảnh tự chụp (`real_photo`) — việc bạn tự làm
 
-1. Chọn ~20 cuốn sách thật có bán trên Fahasa (càng đa dạng càng tốt: bìa chữ to, bìa nhiều hình,
-   truyện tranh, sách ngoại văn).
+1. Chọn ~20 cuốn sách thật **có trong kho 950 cuốn** (tra bằng `--find`; càng đa dạng càng tốt: bìa chữ to,
+   bìa nhiều hình, truyện tranh, sách ngoại văn).
 2. Chụp bằng điện thoại như người dùng thật: cầm tay, có nền bàn, hơi nghiêng, đèn phòng. Không cần
    căn chỉnh. Lưu vào `eval/data/real_photo/` (tên bất kỳ, `.jpg`/`.png`).
 3. Tìm `image_id` từng cuốn: `python build_sets.py real_photo --find "<tên sách>"`.
 4. Tạo `eval/data/real_photo/manifest.jsonl`, mỗi dòng một ảnh:
    ```json
-   {"query_image": "IMG_0012.jpg", "expected_id": "fahasa_13045"}
+   {"query_image": "IMG_0012.jpg", "expected_id": "fahasa_1"}
    ```
 5. Chạy `python build_sets.py real_photo` tới khi báo 0 lỗi.
 
@@ -52,10 +57,12 @@ python run_eval.py --via direct --limit 5 --out /tmp/r.json # chạy thử
 ```
 
 - `--via n8n`: gọi `POST {N8N_BASE_URL}/webhook/biascan-search` kèm header `x-biascan-token`, đúng
-  như web gọi (ảnh nén ≤1600 px, JPEG q85). Latency là thời gian từ lúc gửi tới lúc nhận đủ phản hồi,
-  gồm cả OCR, embed, tìm kiếm và rerank. Mặc định giãn 6,5 s giữa 2 request vì rate limit 10/phút/IP;
-  gặp 429 thì chờ 65 s rồi thử lại. Muốn chạy nhanh hơn thì tạm nâng `rate_limit_per_min`,
-  `rate_limit_per_day` trong `app_config` (400 truy vấn vượt mức 200/ngày). Tập ảnh được ghi nhãn mode
+  như web gọi (ảnh nén cạnh dài ≤ 768 px, JPEG q80). Latency là thời gian từ lúc gửi tới lúc nhận đủ phản hồi,
+  gồm OCR, embed và tìm kiếm (tìm kiếm không gọi model sinh chữ; câu trùng có thể trả từ cache). Mặc định
+  giãn 6,5 s giữa 2 request vì rate limit 10/phút/IP; gặp `429 rate_limited` thì chờ 65 s rồi thử lại, gặp
+  `429 quota_exhausted` (Gemini hết quota miễn phí trong ngày) thì dừng ngay như hết quota. Mặc định khoảng
+  240 truy vấn (100 + 100 + ~20 ảnh thật, nhân số mode) — vượt mức 200/ngày thì tạm nâng `rate_limit_per_min`,
+  `rate_limit_per_day` trong `app_config`, hoặc chạy từng tập qua 2 ngày với `--sets … --merge`. Tập ảnh được ghi nhãn mode
   theo `--n8n-mode` (mặc định `text` = workflow OCR→text; đặt `hybrid` nếu workflow đã gộp ảnh bằng RRF).
 - `--via direct`: script tự OCR (Gemini, `OCR_MODEL`), tự embed (`EMBED_MODEL`, 768 chiều, chuẩn hoá
   L2 như ingest) rồi gọi thẳng các hàm RPC trong Postgres:
@@ -77,6 +84,9 @@ python run_eval.py --via direct --limit 5 --out /tmp/r.json # chạy thử
 `n` dự kiến) để web hiện "chưa đo" khi chưa chạy thật.
 
 ## Phương pháp
+
+**Vì sao chỉ 100 ảnh / 100 câu.** Quota Gemini miễn phí theo ngày có hạn; 100 mẫu mỗi bộ đủ để thấy chênh lệch
+giữa các chế độ (mỗi mẫu = 1 điểm phần trăm) mà chạy xong trong một ngày quota. Cần nhiều hơn thì `--n`.
 
 **Vì sao làm hỏng ảnh.** Ảnh bìa trong DB là ảnh scan sạch từ Fahasa. Nếu đem chính ảnh đó đi tìm
 thì gần như chắc chắn đúng, con số đẹp nhưng vô nghĩa. Người dùng thật chụp bằng điện thoại: nghiêng,

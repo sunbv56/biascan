@@ -17,7 +17,7 @@ type Phase =
   | { kind: "idle" }
   | { kind: "loading"; hasImage: boolean; startedAt: number }
   | { kind: "error"; code: ApiErrorCode; message: string; status: number }
-  | { kind: "done"; data: SearchResponse; query: string | null };
+  | { kind: "done"; data: SearchResponse; query: string | null; runId: number };
 
 function statusText(phase: Phase): string {
   if (phase.kind === "loading") return "Đang tìm sách…";
@@ -30,6 +30,7 @@ export function SearchClient() {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const lastRequest = useRef<Omit<SearchRequest, "session_id"> | null>(null);
   const inflight = useRef<AbortController | null>(null);
+  const runCounter = useRef(0);
   const resultsRef = useRef<HTMLDivElement>(null);
   const resultsColRef = useRef<HTMLElement>(null);
   const { setLastResults, openChat } = useAppState();
@@ -47,7 +48,7 @@ export function SearchClient() {
       try {
         const data = await searchBooks({ ...req, session_id: getSessionId() }, controller.signal);
         if (controller.signal.aborted) return;
-        setPhase({ kind: "done", data, query: req.query?.trim() || null });
+        setPhase({ kind: "done", data, query: req.query?.trim() || null, runId: ++runCounter.current });
         if (data.results.length) setLastResults(data.results);
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -97,7 +98,7 @@ export function SearchClient() {
             (phase.data.results.length === 0 ? (
               <NoResults ocrText={phase.data.ocr_text} />
             ) : (
-              <Results data={phase.data} onAsk={() => openChat("So sánh giúp mình 3 cuốn khớp nhất.")} />
+              <Results key={phase.runId} data={phase.data} query={phase.query} onAsk={() => openChat("So sánh giúp mình 3 cuốn khớp nhất.")} />
             ))}
         </div>
       </section>

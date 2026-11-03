@@ -1,12 +1,13 @@
 # BiaScan — web
 
-Giao diện Next.js (App Router) cho BiaScan: tìm sách bằng ảnh bìa hoặc mô tả, drawer chat tư vấn, trang `/eval`.
+Giao diện Next.js (App Router) cho BiaScan: tìm sách bằng ảnh bìa hoặc mô tả trong kho cố định 950 đầu sách
+([`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950)), drawer chat tư vấn, trang `/eval`.
 Web không có backend riêng — mọi lời gọi đi thẳng tới webhook n8n theo `docs/CONTRACT.md`.
 
 | Trang | Nội dung |
 |---|---|
-| `/` | Giới thiệu, sơ đồ luồng OCR → embedding → pgvector → rerank |
-| `/tim-kiem` | Chụp/tải ảnh bìa (nén ở trình duyệt), ô mô tả, top 3 kèm lý do + 7 kết quả gọn |
+| `/` | Giới thiệu, sơ đồ luồng OCR → embedding → pgvector → giải thích khi hỏi; số liệu kho + link dataset |
+| `/tim-kiem` | Chụp/tải ảnh bìa (nén ở trình duyệt), ô mô tả, câu/ảnh mẫu bấm là tìm; top 3 có nút “Vì sao?” (1 lần gọi `biascan-explain` cho cả 3) + 7 kết quả gọn; nhãn “lấy từ bộ nhớ đệm” khi `cached: true` |
 | `/eval` | Đọc `public/eval/results.json`; `status: "placeholder"` ⇒ hiện "chưa đo", không có số |
 | Drawer chat | Mở từ nút "Hỏi trợ lý" ở mọi trang; gửi `context_ids` = kết quả tìm gần nhất |
 
@@ -51,10 +52,11 @@ Chạy local thì n8n phải cho phép CORS từ `http://localhost:3000` (đã c
 ## Deploy (xuất tĩnh)
 
 `next.config.ts` đặt `output: "export"`: build ra `out/` toàn HTML/JS/CSS (~1,4 MB), không cần server Node.
-Ảnh bìa tải thẳng từ `cdn0.fahasa.com` (`images.unoptimized`).
+Ảnh bìa tải thẳng từ `cdn0.fahasa.com` (`images.unoptimized`). Ảnh mẫu trên trang tìm kiếm được `fetch` về trình duyệt
+(CDN trả `Access-Control-Allow-Origin: *`), nén như ảnh người dùng rồi gửi đi.
 
 Bản demo chạy ở `https://biascan.thuanbt.id.vn`, do Caddy trên proxy Fly phục vụ file tĩnh và chuyển tiếp
-`/webhook/biascan-search`, `/webhook/biascan-chat` sang n8n — cùng origin nên không cần CORS:
+`/webhook/biascan-search`, `/webhook/biascan-explain`, `/webhook/biascan-chat` sang n8n — cùng origin nên không cần CORS:
 
 ```bash
 NEXT_PUBLIC_N8N_BASE_URL=/ NEXT_PUBLIC_BIASCAN_TOKEN=<token> npm run build
@@ -63,7 +65,13 @@ NEXT_PUBLIC_N8N_BASE_URL=/ NEXT_PUBLIC_BIASCAN_TOKEN=<token> npm run build
 
 Token và URL được nhúng lúc build, đổi thì phải build lại. Host khác (Cloudflare Pages, GitHub Pages,
 Vercel) cũng dùng được `out/`; khi đó đặt `NEXT_PUBLIC_N8N_BASE_URL=https://n8n.thuanbt.id.vn` và thêm
-domain vào CORS của 2 webhook n8n.
+domain vào CORS của 3 webhook n8n.
+
+## Lỗi từ n8n
+
+`429 rate_limited` (quá nhiều yêu cầu/phút theo IP, thử lại sau ~1 phút) và `429 quota_exhausted` (mọi model Gemini
+trong chuỗi dự phòng đã hết quota miễn phí trong ngày) được tách riêng: tìm kiếm, “Vì sao?” và chat đều hiện nguyên
+thông điệp tiếng Việt của máy chủ; `quota_exhausted` không hiện nút “Thử lại”.
 
 ## Cập nhật số đo
 
@@ -75,8 +83,10 @@ deploy lại. Khi `status` khác `measured`, trang `/eval` bỏ qua mọi số t
 ```
 app/            layout, trang /, /tim-kiem, /eval; tokens.css (OKLCH, font, spacing, easing) + globals.css
 components/     header, footer, sơ đồ luồng, drawer chat, thẻ sách, form/trạng thái tìm kiếm
-lib/api.ts      client typed theo CONTRACT: timeout 30 s (AbortController), lỗi ApiError có code
-lib/image.ts    nén ảnh bằng canvas: cạnh dài ≤ 1280 px, JPEG ≤ 4 MB → data URL
+lib/api.ts      client typed theo CONTRACT (search, explain, chat): timeout 30 s, lỗi ApiError có code
+lib/image.ts    nén ảnh bằng canvas: cạnh dài ≤ 768 px, JPEG q≈0,8 (≤ 4 MB) → data URL, ít token hơn khi OCR
+lib/samples.ts  câu mẫu + 3 bìa mẫu (sách có trong kho 950 cuốn)
+lib/site.ts     link GitHub/dataset, số liệu kho (950 sách, 937 có mô tả, 534 tác giả, 66 NXB)
 lib/session.ts  session_id trong sessionStorage (fallback bộ nhớ nếu bị chặn)
 public/eval/    results.json
 .hallmark/      nhật ký thiết kế (Hallmark)

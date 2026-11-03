@@ -30,7 +30,7 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: { default: "BiaScan — tra sách bằng ảnh bìa", template: "%s · BiaScan" },
   description:
-    "Chụp bìa hoặc kể nội dung, BiaScan tìm đúng cuốn sách trong 33.531 đầu sách: OCR, embedding, pgvector và xếp hạng lại bằng Gemini.",
+    "Chụp bìa hoặc kể nội dung, BiaScan tìm đúng cuốn sách trong kho 950 đầu sách: OCR, embedding Gemini và pgvector, lý do khớp viết khi bạn hỏi.",
 };
 
 export const viewport: Viewport = {

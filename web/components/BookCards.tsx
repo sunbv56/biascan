@@ -33,7 +33,17 @@ function FahasaLink({ book, compact }: { book: BookCard; compact?: boolean }) {
   );
 }
 
-export function TopResultCard({ book, rank }: { book: SearchResult; rank: number }) {
+export type ExplainStatus = { kind: "idle" } | { kind: "loading" } | { kind: "done"; reason: string } | { kind: "missing" };
+
+interface TopProps {
+  book: SearchResult;
+  rank: number;
+  explain?: ExplainStatus;
+  onExplain?: () => void;
+}
+
+export function TopResultCard({ book, rank, explain, onExplain }: TopProps) {
+  const reason = explain?.kind === "done" ? explain.reason : book.reason;
   return (
     <article className="top-card" data-reveal>
       <span className="top-card__rank" aria-hidden="true">
@@ -46,13 +56,26 @@ export function TopResultCard({ book, rank }: { book: SearchResult; rank: number
           {book.title || "Không rõ tên sách"}
         </h3>
         <Meta book={book} />
-        {book.reason && (
+        {reason ? (
           <p className="top-card__reason">
             <span className="top-card__reason-label">Vì sao khớp</span>
-            {book.reason.replace(/\*\*|__/g, "")}
+            {reason.replace(/\*\*|__/g, "")}
           </p>
-        )}
+        ) : explain?.kind === "loading" ? (
+          <p className="top-card__reason top-card__reason--pending" aria-hidden="true">
+            <span className="top-card__reason-label">Vì sao khớp</span>
+            <span className="mono-note">đang viết lý do…</span>
+          </p>
+        ) : explain?.kind === "missing" ? (
+          <p className="top-card__reason mono-note">Không có lý do cho cuốn này.</p>
+        ) : null}
         <div className="top-card__foot">
+          {explain && !reason && explain.kind !== "missing" && onExplain && (
+            <button type="button" className="btn btn--text top-card__why" onClick={onExplain} disabled={explain.kind === "loading"} aria-busy={explain.kind === "loading" || undefined}>
+              {explain.kind === "loading" ? "Đang hỏi…" : "Vì sao?"}
+              <span className="sr-only"> (giải thích cùng lúc cho ba cuốn đầu)</span>
+            </button>
+          )}
           <FahasaLink book={book} />
           <span className="score" title="Điểm tương đồng từ pgvector (đã cộng điểm khớp tên)">
             điểm {formatDecimal(book.score, 2)}

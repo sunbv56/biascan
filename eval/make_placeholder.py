@@ -7,7 +7,7 @@ from pathlib import Path
 from common import DEFAULT_RESULTS, MODES, N_BOOKS, settings
 from run_eval import write_results
 
-PLANNED = [("image_aug", MODES, 300), ("text_query", ("text",), 100), ("real_photo", MODES, 20)]
+PLANNED = [("image_aug", MODES, 100), ("text_query", ("text",), 100), ("real_photo", MODES, 20)]
 
 
 def placeholder(models: dict) -> dict:
@@ -26,7 +26,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=DEFAULT_RESULTS)
     args = ap.parse_args(argv)
     s = settings()
-    write_results(args.out, placeholder({"ocr": s.ocr_model, "embed": s.embed_model, "rerank": s.chat_model}))
+    write_results(args.out, placeholder({"ocr": s.ocr_model, "embed": s.embed_model, "rerank": ""}))
     print(f"Đã ghi {args.out}")
     return 0
 

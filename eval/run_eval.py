@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import (DATA_DIR, DEFAULT_RESULTS, MODES, N_BOOKS, OUT_DIR, SETS, QuotaStop, Throttle, read_jsonl,
-                    settings, write_jsonl)
+from common import (CATALOG_MAX, DATA_DIR, DEFAULT_RESULTS, MODES, N_BOOKS, OUT_DIR, SETS, QuotaStop, Throttle,
+                    in_catalog, is_quota_exhausted_response, read_jsonl, settings, write_jsonl)
 from metrics import rank_of, summarize
 from textnorm import normalize
 
@@ -30,15 +30,28 @@ class Item:
         return f"{self.expected_id}|{self.image_path.name if self.image_path else self.query}"
 
 
-def load_items(set_name: str, data_dir: Path, limit: int | None = None) -> list[Item]:
+def load_items(set_name: str, data_dir: Path, limit: int | None = None, catalog_max: int = CATALOG_MAX,
+               log=print) -> list[Item]:
     folder = data_dir / set_name
-    items = []
+    items, skipped = [], 0
     for r in read_jsonl(folder / "manifest.jsonl"):
+        if not in_catalog(r.get("expected_id", ""), catalog_max):
+            skipped += 1
+            continue
         if set_name == "text_query":
             items.append(Item(set_name, r["expected_id"], query=r["query"]))
         else:
             items.append(Item(set_name, r["expected_id"], image_path=folder / r["query_image"]))
+    if skipped:
+        log(f"{set_name}: bỏ {skipped} mẫu có sách ngoài kho fahasa_0 … fahasa_{catalog_max - 1}")
     return items[:limit] if limit else items
+
+
+def restrict_to(items: list[Item], ids: set[str], log=print) -> list[Item]:
+    kept = [it for it in items if it.expected_id in ids]
+    if len(kept) < len(items):
+        log(f"Bỏ {len(items) - len(kept)} mẫu có sách đáp án không nằm trong bảng books")
+    return kept
 
 
 def modes_for(item_set: str, requested: list[str]) -> list[str]:
@@ -83,6 +96,13 @@ class N8nBackend:
             t0 = time.perf_counter()
             resp = self.post(self.url, json=body, headers=self.headers, timeout=120)
             ms = (time.perf_counter() - t0) * 1000
+            if resp.status_code == 429:
+                try:
+                    payload = resp.json()
+                except ValueError:
+                    payload = None
+                if is_quota_exhausted_response(resp.status_code, payload):
+                    raise QuotaStop(f"n8n báo hết quota Gemini (quota_exhausted): {payload['error'].get('message', '')}")
             if resp.status_code == 429 and attempt < 3:
                 self.sleep(65)
                 continue
@@ -284,6 +304,8 @@ def main(argv=None) -> int:
     ap.add_argument("--min-interval", type=float, default=None,
                     help="giây giữa 2 request (mặc định n8n 6.5 vì rate limit 10/phút, direct 4.5 cho Gemini free)")
     ap.add_argument("--n-books", type=int, default=N_BOOKS)
+    ap.add_argument("--catalog-max", type=int, default=CATALOG_MAX,
+                    help="chỉ đánh giá sách fahasa_0 … fahasa_<N-1> (mặc định 950, đúng kho trong DB)")
     ap.add_argument("--max-error-rate", type=float, default=0.05,
                     help="tỉ lệ truy vấn lỗi tối đa; vượt thì không ghi results.json (mặc định 0.05)")
     args = ap.parse_args(argv)
@@ -299,7 +321,7 @@ def main(argv=None) -> int:
 
     items = []
     for set_name in sets:
-        got = load_items(set_name, args.data_dir, args.limit)
+        got = load_items(set_name, args.data_dir, args.limit, args.catalog_max)
         print(f"{set_name}: {len(got)} mẫu")
         items += got
     if not items:
@@ -309,7 +331,7 @@ def main(argv=None) -> int:
     n_books = args.n_books
     if args.via == "n8n":
         backend = N8nBackend(s, args.n8n_mode, 6.5 if args.min_interval is None else args.min_interval)
-        models = {"ocr": s.ocr_model, "embed": s.embed_model, "rerank": s.chat_model}
+        models = {"ocr": s.ocr_model, "embed": s.embed_model, "rerank": ""}
         conn = None
     else:
         import psycopg
@@ -320,15 +342,19 @@ def main(argv=None) -> int:
             raise SystemExit("Thiếu DATABASE_URL trong eval/.env")
         conn = psycopg.connect(s.database_url, autocommit=True, prepare_threshold=None)
         with conn.cursor() as cur:
-            cur.execute("select count(*) from books")
-            n_books = cur.fetchone()[0]
+            cur.execute("select image_id from books")
+            db_ids = {row[0] for row in cur.fetchall() if in_catalog(row[0], args.catalog_max)}
+            n_books = len(db_ids)
+            items = restrict_to(items, db_ids)
+            if not items:
+                raise SystemExit("Không còn mẫu nào có sách đáp án trong bảng books")
             if {"image", "hybrid"} & set(modes) and any(x != "text_query" for x in sets):
                 cur.execute("select count(*) from books where image_embedding is not null")
                 if cur.fetchone()[0] == 0:
                     raise SystemExit("DB chưa có image_embedding nào: bỏ image,hybrid khỏi --modes")
         gem = Gemini(s, min_interval=4.5 if args.min_interval is None else args.min_interval)
         backend = DirectBackend(s, gem, conn.cursor, OUT_DIR / "cache" / f"direct-{s.ocr_model}-{s.embed_model}-{s.embed_dims}.jsonl")
-        models = {"ocr": s.ocr_model, "embed": s.embed_model, "rerank": "không dùng (direct)"}
+        models = {"ocr": s.ocr_model, "embed": s.embed_model, "rerank": ""}
 
     planned = sum(len(backend.modes(it, modes)) for it in items)
     try:

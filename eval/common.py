@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,9 +11,10 @@ DATA_DIR = EVAL_DIR / "data"
 OUT_DIR = EVAL_DIR / "out"
 DEFAULT_RESULTS = EVAL_DIR.parent / "web" / "public" / "eval" / "results.json"
 
-HF_REPO = "sunbv56/vi-OCR_VQA-desc"
-HF_FILE = "train.jsonl"
-N_BOOKS = 33531
+HF_REPO = "sunbv56/biascan-950"
+HF_FILE = "data/train.parquet"
+N_BOOKS = 950
+CATALOG_MAX = 950
 SETS = ("image_aug", "text_query", "real_photo")
 MODES = ("text", "image", "hybrid")
 
@@ -55,7 +57,7 @@ def settings() -> Settings:
 
 
 def dataset_path() -> Path:
-    local = os.getenv("BIASCAN_DATASET_JSONL")
+    local = os.getenv("BIASCAN_DATASET") or os.getenv("BIASCAN_DATASET_JSONL")
     if local:
         return Path(local)
     from huggingface_hub import hf_hub_download
@@ -63,14 +65,31 @@ def dataset_path() -> Path:
     return Path(hf_hub_download(HF_REPO, HF_FILE, repo_type="dataset"))
 
 
-def load_books(path: Path | None = None) -> list[dict]:
+_CATALOG_ID = re.compile(r"fahasa_(\d+)")
+
+
+def in_catalog(image_id: str, catalog_max: int = CATALOG_MAX) -> bool:
+    m = _CATALOG_ID.fullmatch(image_id or "")
+    return m is not None and int(m.group(1)) < catalog_max
+
+
+def _read_rows(path: Path, keep: tuple[str, ...]) -> list[dict]:
+    if path.suffix == ".parquet":
+        import pyarrow.parquet as pq
+
+        names = pq.read_schema(path).names
+        return pq.read_table(path, columns=[k for k in keep if k in names]).to_pylist()
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def load_books(path: Path | None = None, catalog_max: int = CATALOG_MAX) -> list[dict]:
     keep = ("image_id", "title", "author", "publisher", "supplier", "description", "image_url")
-    books = []
-    with open(path or dataset_path(), encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                row = json.loads(line)
-                books.append({k: row.get(k) or "" for k in keep})
+    books = [
+        {k: row.get(k) or "" for k in keep}
+        for row in _read_rows(Path(path or dataset_path()), keep)
+        if in_catalog(row.get("image_id") or "", catalog_max)
+    ]
     books.sort(key=lambda b: b["image_id"])
     return books
 
@@ -97,6 +116,13 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 
 class QuotaStop(RuntimeError):
     """Hết quota/rate limit sau khi đã thử lại: dừng cả lượt chạy thay vì đánh trượt từng mẫu."""
+
+
+def is_quota_exhausted_response(status: int, payload) -> bool:
+    if status != 429 or not isinstance(payload, dict):
+        return False
+    err = payload.get("error")
+    return isinstance(err, dict) and err.get("code") == "quota_exhausted"
 
 
 def is_rate_limit_error(exc: Exception) -> bool:

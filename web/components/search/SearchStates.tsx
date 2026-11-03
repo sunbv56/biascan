@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { errorMessage, explain } from "@/lib/api";
 import { formatInt, formatMs } from "@/lib/format";
+import { getSessionId } from "@/lib/session";
 import { N_BOOKS } from "@/lib/site";
 import type { ApiErrorCode, SearchResponse } from "@/lib/types";
-import { CompactCard, TopResultCard } from "../BookCards";
+import { CompactCard, TopResultCard, type ExplainStatus } from "../BookCards";
 
 export function EmptyState() {
   return (
     <div className="state state--empty">
       <p className="state__title">Chưa có lượt tìm nào.</p>
       <p className="state__body">
-        Kết quả hiện ở đây: ba cuốn khớp nhất đứng đầu, mỗi cuốn kèm một dòng lý do; bảy cuốn gần giống xếp gọn bên dưới.
+        Kết quả hiện ở đây: ba cuốn khớp nhất đứng đầu, bấm “Vì sao?” để AI viết một dòng lý do cho cả ba; bảy cuốn gần giống xếp gọn bên dưới.
       </p>
       <ul className="state__tips">
         <li>Chụp thẳng mặt bìa, đủ sáng, để chữ tên sách rõ nhất có thể.</li>
@@ -23,12 +25,12 @@ export function EmptyState() {
 
 const STEPS_WITH_IMAGE = [
   { label: "Đọc chữ trên bìa", until: 4000 },
-  { label: `Tìm trong ${formatInt(N_BOOKS)} cuốn`, until: 7000 },
-  { label: "Xếp hạng lại và viết lý do", until: Infinity },
+  { label: "Nhúng thành vector", until: 6000 },
+  { label: `Tìm trong ${formatInt(N_BOOKS)} cuốn`, until: Infinity },
 ];
 const STEPS_TEXT_ONLY = [
-  { label: `Tìm trong ${formatInt(N_BOOKS)} cuốn`, until: 3000 },
-  { label: "Xếp hạng lại và viết lý do", until: Infinity },
+  { label: "Nhúng câu mô tả thành vector", until: 2000 },
+  { label: `Tìm trong ${formatInt(N_BOOKS)} cuốn`, until: Infinity },
 ];
 
 export function LoadingState({ hasImage, startedAt }: { hasImage: boolean; startedAt: number }) {
@@ -81,7 +83,8 @@ export function LoadingState({ hasImage, startedAt }: { hasImage: boolean; start
 
 const ERROR_TITLES: Record<ApiErrorCode, string> = {
   unauthorized: "Máy chủ không nhận token của trang.",
-  rate_limited: "Tạm dừng vì tìm quá nhiều lần.",
+  rate_limited: "Tạm dừng vì gửi quá nhiều lần.",
+  quota_exhausted: "Demo đã hết lượt miễn phí hôm nay.",
   bad_request: "Yêu cầu chưa đủ thông tin.",
   upstream: "Dịch vụ AI chưa trả lời.",
   timeout: "Chờ quá lâu nên đã dừng.",
@@ -133,10 +136,47 @@ export function NoResults({ ocrText }: { ocrText: string | null }) {
   );
 }
 
-export function Results({ data, onAsk }: { data: SearchResponse; onAsk: () => void }) {
+type ExplainState = { kind: "idle" } | { kind: "loading" } | { kind: "done"; reasons: Record<string, string> } | { kind: "error"; code: ApiErrorCode; message: string };
+
+function useExplain(query: string | null, ids: string[]) {
+  const [state, setState] = useState<ExplainState>({ kind: "idle" });
+  const inflight = useRef<AbortController | null>(null);
+  const idsKey = ids.join(",");
+
+  useEffect(() => () => inflight.current?.abort(), []);
+
+  const run = useCallback(async () => {
+    if (!query || !idsKey || inflight.current) return;
+    const controller = new AbortController();
+    inflight.current = controller;
+    setState({ kind: "loading" });
+    try {
+      const res = await explain({ session_id: getSessionId(), query, image_ids: idsKey.split(",") }, controller.signal);
+      if (!controller.signal.aborted) setState({ kind: "done", reasons: res.reasons });
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const { code, message } = errorMessage(err);
+      setState({ kind: "error", code, message });
+    } finally {
+      if (inflight.current === controller) inflight.current = null;
+    }
+  }, [query, idsKey]);
+
+  return { state, run, available: Boolean(query) };
+}
+
+function statusFor(state: ExplainState, id: string): ExplainStatus {
+  if (state.kind === "loading") return { kind: "loading" };
+  if (state.kind === "done") return state.reasons[id] ? { kind: "done", reason: state.reasons[id] } : { kind: "missing" };
+  return { kind: "idle" };
+}
+
+export function Results({ data, query, onAsk }: { data: SearchResponse; query: string | null; onAsk: () => void }) {
   const top = data.results.slice(0, 3);
   const rest = data.results.slice(3);
   const t = data.timings_ms;
+  const explainQuery = query || data.ocr_text;
+  const why = useExplain(explainQuery, top.map((b) => b.image_id));
 
   return (
     <div className="results">
@@ -147,17 +187,45 @@ export function Results({ data, onAsk }: { data: SearchResponse; onAsk: () => vo
           <h2 id="khop-nhat" className="section-title">
             Khớp nhất
           </h2>
-          <button type="button" className="btn btn--text" onClick={onAsk}>
-            Hỏi trợ lý về các cuốn này
-          </button>
+          <div className="results__head-side">
+            {data.cached && (
+              <span className="cached-tag" title="Câu này đã có người tìm gần đây, kết quả lấy lại từ bộ nhớ đệm, không gọi AI lần nữa">
+                lấy từ bộ nhớ đệm
+              </span>
+            )}
+            <button type="button" className="btn btn--text" onClick={onAsk}>
+              Hỏi trợ lý về các cuốn này
+            </button>
+          </div>
         </div>
         <ol className="top-list">
           {top.map((b, i) => (
             <li key={b.image_id}>
-              <TopResultCard book={b} rank={i + 1} />
+              <TopResultCard
+                book={b}
+                rank={i + 1}
+                explain={why.available ? statusFor(why.state, b.image_id) : undefined}
+                onExplain={() => void why.run()}
+              />
             </li>
           ))}
         </ol>
+        {why.state.kind === "error" && (
+          <div className="explain-error" role="alert">
+            <p>
+              <strong>Chưa viết được lý do.</strong> {why.state.message}
+            </p>
+            <p className="mono-note">mã lỗi: {why.state.code}</p>
+            {RETRYABLE.has(why.state.code) && (
+              <button type="button" className="btn btn--text" onClick={() => void why.run()}>
+                Thử lại
+              </button>
+            )}
+          </div>
+        )}
+        <p className="sr-only" role="status">
+          {why.state.kind === "loading" ? "Đang viết lý do cho ba cuốn đầu…" : why.state.kind === "done" ? "Đã có lý do cho ba cuốn đầu." : ""}
+        </p>
       </section>
 
       {rest.length > 0 && (
@@ -184,7 +252,6 @@ export function Results({ data, onAsk }: { data: SearchResponse; onAsk: () => vo
                 ["OCR", t.ocr],
                 ["Nhúng", t.embed],
                 ["Tìm", t.search],
-                ["Xếp hạng", t.rerank],
                 ["Tổng", t.total],
               ] as const
             ).map(([k, v]) => (

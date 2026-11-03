@@ -48,14 +48,14 @@ export function PipelineMap() {
         <li className="node node--input node--photo" data-node>
           <p className="node__kind">Đầu vào</p>
           <h3 className="node__title">Ảnh bìa</h3>
-          <p className="node__body">Chụp bằng điện thoại, nén ở trình duyệt: cạnh dài ≤ 1280 px, JPEG ≤ 4 MB.</p>
+          <p className="node__body">Chụp bằng điện thoại, nén ở trình duyệt: cạnh dài ≤ 768 px, JPEG chất lượng 0,8 — ít token hơn khi đọc chữ.</p>
           <span className="edge edge--solid" data-edge aria-hidden="true" />
         </li>
 
         <li className="node node--ocr" data-node>
           <p className="node__kind">Bước 1 · chỉ với ảnh</p>
           <h3 className="node__title">Đọc chữ trên bìa</h3>
-          <p className="node__tech">Gemini Flash · OCR</p>
+          <p className="node__tech">Gemini · OCR, có model dự phòng</p>
           <p className="node__body">Lấy tên sách, tác giả, nhà xuất bản — kể cả chữ cong, chữ nghệ thuật.</p>
           <span className="edge edge--solid" data-edge aria-hidden="true" />
         </li>
@@ -79,18 +79,18 @@ export function PipelineMap() {
           <p className="node__kind">Bước 3</p>
           <h3 className="node__title">Tìm 10 ứng viên</h3>
           <p className="node__tech">Supabase pgvector · HNSW cosine</p>
-          <p className="node__body">Cộng điểm khi tên sách không dấu khớp ≥ 0,6 theo trigram, để chữ OCR gần nguyên văn lên đầu.</p>
+          <p className="node__body">Cộng điểm khi tên sách không dấu khớp ≥ 0,6 theo trigram, để chữ OCR gần nguyên văn lên đầu. Câu đã tìm gần đây lấy lại từ bộ nhớ đệm.</p>
           <a className="node__link" href={`${GITHUB_URL}/tree/main/supabase`} target="_blank" rel="noopener noreferrer">
             Xem mã SQL<span aria-hidden="true"> ↗</span>
           </a>
           <span className="edge edge--solid" data-edge aria-hidden="true" />
         </li>
 
-        <li className="node node--rerank" data-node>
-          <p className="node__kind">Bước 4</p>
-          <h3 className="node__title">Xếp hạng lại</h3>
-          <p className="node__tech">Gemini · top 3 kèm lý do</p>
-          <p className="node__body">Đọc kỹ 10 ứng viên, chọn 3 cuốn đáng xem nhất và viết một dòng giải thích vì sao.</p>
+        <li className="node node--explain" data-node>
+          <p className="node__kind">Bước 4 · khi bạn hỏi</p>
+          <h3 className="node__title">Giải thích vì sao khớp</h3>
+          <p className="node__tech">Gemini · một lần gọi cho 3 cuốn</p>
+          <p className="node__body">Kết quả tìm không gọi model viết chữ. Bấm “Vì sao?” thì một lượt gọi viết lý do cho cả ba cuốn đầu, lưu lại cho lần sau.</p>
           <Link className="node__link" href="/tim-kiem">
             Thử với một cuốn sách
           </Link>

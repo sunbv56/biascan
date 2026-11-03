@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { compressImage, dataUrlBytes, ImagePrepError } from "@/lib/image";
+import { compressImage, dataUrlBytes, fetchSampleImage, ImagePrepError, MAX_EDGE } from "@/lib/image";
+import { SAMPLE_COVERS, SAMPLE_QUERIES, type SampleCover } from "@/lib/samples";
 import type { SearchRequest } from "@/lib/types";
 
 interface Props {
@@ -24,7 +25,8 @@ export function SearchForm({ busy, onSubmit }: Props) {
   const [dragging, setDragging] = useState(false);
   const pickRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const ids = { query: useId(), help: useId(), drop: useId(), imgErr: useId() };
+  const [loadingSample, setLoadingSample] = useState<string | null>(null);
+  const ids = { query: useId(), help: useId(), drop: useId(), imgErr: useId(), samples: useId() };
 
   async function accept(file: File | undefined) {
     if (!file) return;
@@ -41,6 +43,32 @@ export function SearchForm({ busy, onSubmit }: Props) {
       setPreparing(false);
       if (pickRef.current) pickRef.current.value = "";
       if (cameraRef.current) cameraRef.current.value = "";
+    }
+  }
+
+  function runSampleQuery(q: string) {
+    if (busy || preparing) return;
+    setQuery(q);
+    clearImage();
+    onSubmit({ query: q });
+  }
+
+  async function runSampleCover(cover: SampleCover) {
+    if (busy || preparing) return;
+    setImageError(null);
+    setPreparing(true);
+    setLoadingSample(cover.image_id);
+    try {
+      const url = await fetchSampleImage(cover.image_url);
+      setImage(url);
+      setImageName(`Ảnh mẫu: ${cover.title}`);
+      setQuery("");
+      onSubmit({ image: url });
+    } catch (err) {
+      setImageError(err instanceof ImagePrepError ? err.message : "Không tải được ảnh mẫu. Thử lại sau.");
+    } finally {
+      setPreparing(false);
+      setLoadingSample(null);
     }
   }
 
@@ -76,7 +104,7 @@ export function SearchForm({ busy, onSubmit }: Props) {
             <img src={image} alt="Ảnh bìa đã chọn" className="preview__img" />
             <div className="preview__meta">
               <p className="preview__name">{imageName}</p>
-              <p className="mono-note">Đã nén còn {kb(dataUrlBytes(image))}, cạnh dài ≤ 1280 px</p>
+              <p className="mono-note">Đã nén còn {kb(dataUrlBytes(image))}, cạnh dài ≤ {MAX_EDGE} px</p>
               <div className="preview__actions">
                 <button type="button" className="btn btn--text" onClick={() => pickRef.current?.click()} disabled={busy}>
                   Đổi ảnh
@@ -165,6 +193,39 @@ export function SearchForm({ busy, onSubmit }: Props) {
       <button type="submit" className="btn btn--primary btn--block" disabled={!canSubmit} aria-disabled={!canSubmit}>
         {busy ? "Đang tìm…" : "Tìm sách"}
       </button>
+
+      <section className="samples" aria-labelledby={ids.samples}>
+        <p id={ids.samples} className="field__label">
+          Chưa có sách trong tay? Bấm thử
+        </p>
+        <ul className="samples__queries">
+          {SAMPLE_QUERIES.map((q) => (
+            <li key={q}>
+              <button type="button" className="chip" onClick={() => runSampleQuery(q)} disabled={busy || preparing}>
+                {q}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <ul className="samples__covers" aria-label="Ảnh bìa mẫu">
+          {SAMPLE_COVERS.map((c) => (
+            <li key={c.image_id}>
+              <button
+                type="button"
+                className="sample-cover"
+                onClick={() => void runSampleCover(c)}
+                disabled={busy || preparing}
+                aria-busy={loadingSample === c.image_id || undefined}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- ảnh nhỏ từ CDN Fahasa, bản xuất tĩnh không tối ưu ảnh */}
+                <img src={c.image_url} alt="" className="sample-cover__img" loading="lazy" width={56} height={80} />
+                <span className="sample-cover__label">{loadingSample === c.image_id ? "Đang tải…" : c.title}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="mono-note">Ảnh mẫu là bìa gốc từ Fahasa, tải về trình duyệt rồi gửi như ảnh bạn chụp.</p>
+      </section>
     </form>
   );
 }

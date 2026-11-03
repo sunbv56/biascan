@@ -1,4 +1,5 @@
-export const MAX_EDGE = 1280;
+export const MAX_EDGE = 768;
+export const JPEG_QUALITY = 0.8;
 export const MAX_BYTES = 4 * 1024 * 1024;
 
 export class ImagePrepError extends Error {}
@@ -38,7 +39,7 @@ async function decode(file: Blob): Promise<{ source: CanvasImageSource; width: n
   }
 }
 
-export async function compressImage(file: File): Promise<string> {
+export async function compressImage(file: Blob): Promise<string> {
   if (!file.type.startsWith("image/")) throw new ImagePrepError("Tệp đã chọn không phải ảnh.");
   const decoded = await decode(file);
   try {
@@ -53,7 +54,7 @@ export async function compressImage(file: File): Promise<string> {
       ctx.fillStyle = "#fff";
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(decoded.source, 0, 0, width, height);
-      for (const quality of [0.86, 0.76, 0.66]) {
+      for (const quality of [JPEG_QUALITY, 0.7, 0.6]) {
         const url = canvas.toDataURL("image/jpeg", quality);
         if (dataUrlBytes(url) <= MAX_BYTES) return url;
       }
@@ -64,4 +65,15 @@ export async function compressImage(file: File): Promise<string> {
   } finally {
     decoded.close();
   }
+}
+
+export async function fetchSampleImage(url: string, signal?: AbortSignal): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(url, { mode: "cors", signal });
+  } catch {
+    throw new ImagePrepError("Không tải được ảnh mẫu. Kiểm tra mạng rồi thử lại.");
+  }
+  if (!res.ok) throw new ImagePrepError("Không tải được ảnh mẫu. Kiểm tra mạng rồi thử lại.");
+  return compressImage(await res.blob());
 }
