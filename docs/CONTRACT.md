@@ -48,9 +48,14 @@ Boost: `similarity(title_norm, query_norm) >= 0.6` cộng vào score (text) đ�
 ### Bảng phụ
 
 - `app_config(key text primary key, value text, note text)` — seed:
-  `chat_model=gemini-2.5-flash-lite`, `ocr_model=gemini-2.5-flash`,
-  `embed_model=gemini-embedding-2`, `embed_dims=768`, `top_k=10`, `rerank_k=3`,
-  `desc_max_chars=2000`, `rate_limit_per_min=10`, `rate_limit_per_day=200`.
+  `llm_models=gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash` (thứ tự dự phòng cho mọi việc
+  sinh chữ: OCR, chat, giải thích; model đầu lỗi 429/5xx/timeout thì thử model sau),
+  `embed_model=gemini-embedding-2`, `embed_dims=768`, `top_k=10`, `chat_k=5`,
+  `desc_max_chars=2000`, `rate_limit_per_min=10`, `rate_limit_per_day=200`,
+  `cache_ttl_hours=168`. (`chat_model`, `ocr_model`, `rerank_k` cũ không còn dùng.)
+- `search_cache(cache_key text primary key, payload jsonb, hits int default 0, created_at timestamptz default now())`
+  — `q:<query_norm>` → kết quả tìm bằng chữ; `img:<sha256 base64 ảnh>` → `{ocr_text, ocr_title}`;
+  `why:<query_norm>|<ids>` → lý do. Hết hạn theo `cache_ttl_hours`.
 - `rate_limits(ip text, window_start timestamptz, count int, primary key(ip, window_start))`
   + hàm `hit_rate_limit(p_ip text, p_per_min int, p_per_day int) returns boolean` (true = vượt).
 - `n8n_chat_histories` — để node Postgres Chat Memory của n8n tự tạo; không tạo tay.
@@ -77,17 +82,29 @@ Response 200:
 }
 ```
 
-`results` dài `top_k`; 3 phần tử đầu là kết quả rerank của Gemini (có `reason`), phần còn lại `reason: null`.
+`results` dài `top_k`, xếp theo vector (+ boost tên), **không gọi model sinh chữ**; mọi `reason: null`.
+Thêm `"cached": boolean`. `timings_ms.rerank` luôn 0.
+
+### `POST /webhook/biascan-explain`
+
+Request: `{ "session_id": string, "query": string, "image_ids": string[] }` (1–3 id, `query` là câu
+tìm hoặc chữ OCR). Response 200: `{ "reasons": { "<image_id>": "1 câu ≤ 160 ký tự" } }`.
+Đúng 1 lần gọi model (chuỗi dự phòng `llm_models`), có cache.
 
 ### `POST /webhook/biascan-chat`
 
 Request: `{ "session_id": string, "message": string, "context_ids"?: string[] }`
+Luồng cố định, **1 lần gọi model**: embed `message` → `match_books_text` lấy `chat_k` cuốn + sách trong
+`context_ids` → 1 lần sinh JSON `{reply, suggestions, picks}` (chuỗi dự phòng) → `products` = các cuốn
+trong `picks` (chỉ id có trong ngữ cảnh). Lịch sử: 6 lượt gần nhất trong `n8n_chat_histories`.
 Response 200: `{ "reply": "markdown", "suggestions": ["câu gợi ý tiếp", ...], "products": [<card như trên, không cần score/reason>] }`
 
 ### Lỗi
 
 `401 {"error":{"code":"unauthorized","message":"..."}}`, `429 {"error":{"code":"rate_limited",...}}`,
-`400 bad_request`, `502 upstream`. Thông điệp tiếng Việt.
+`429 quota_exhausted` (mọi model trong chuỗi / embedding hết quota Gemini: "Demo đã dùng hết lượt miễn
+phí hôm nay, vui lòng thử lại sau 15:00 (giờ Việt Nam)."), `400 bad_request`, `502 upstream`.
+Thông điệp tiếng Việt.
 
 ## Kết quả đánh giá — `web/public/eval/results.json`
 
@@ -95,7 +112,7 @@ Response 200: `{ "reply": "markdown", "suggestions": ["câu gợi ý tiếp", ..
 {
   "status": "placeholder | measured",
   "generated_at": "ISO-8601 | null",
-  "n_books": 33531,
+  "n_books": 950,
   "models": { "ocr": "", "embed": "", "rerank": "" },
   "runs": [
     { "set": "image_aug | text_query | real_photo", "mode": "text | image | hybrid",
@@ -114,3 +131,8 @@ Response 200: `{ "reply": "markdown", "suggestions": ["câu gợi ý tiếp", ..
   `EMBED_MODEL=gemini-embedding-2`, `EMBED_DIMS=768`, `OCR_MODEL=gemini-2.5-flash`,
   `N8N_BASE_URL`, `BIASCAN_TOKEN`.
 - `web/.env.local`: `NEXT_PUBLIC_N8N_BASE_URL`, `NEXT_PUBLIC_BIASCAN_TOKEN`.
+
+## Kho sách
+
+Cố định **950 sách** `fahasa_0` … `fahasa_949`, công bố ở
+<https://huggingface.co/datasets/sunbv56/biascan-950> (kèm `text_embedding`). Không nạp thêm.
