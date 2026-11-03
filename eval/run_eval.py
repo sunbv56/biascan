@@ -120,7 +120,9 @@ class DirectBackend:
     def _timed(self, fn):
         t0 = time.perf_counter()
         out = fn()
-        return out, (time.perf_counter() - t0) * 1000
+        wall = (time.perf_counter() - t0) * 1000
+        api_ms = getattr(self.g, "last_call_ms", None)
+        return out, wall if api_ms is None else api_ms
 
     def features(self, item: Item, modes: list[str]) -> dict:
         f = self.cache.get(item.key, {"key": item.key})
@@ -128,27 +130,29 @@ class DirectBackend:
         need_text = "text" in modes or "hybrid" in modes
         need_image = item.image_path is not None and ("image" in modes or "hybrid" in modes)
         jpeg = None
-        if item.image_path is not None and need_text and "ocr_text" not in f:
-            jpeg = image_bytes(item)
-            f["ocr_text"], f["ocr_ms"] = self._timed(lambda: self.g.ocr(jpeg))
-            changed = True
-        if need_text and "text_emb" not in f:
-            text = item.query if item.query is not None else f["ocr_text"]
-            if text.strip():
-                f["text_emb"], f["text_emb_ms"] = self._timed(lambda: self.g.embed_text(text))
-            else:
-                f["text_emb"], f["text_emb_ms"] = None, 0.0
-            changed = True
-        if need_image and "image_emb" not in f:
-            jpeg = jpeg or image_bytes(item)
-            f["image_emb"], f["image_emb_ms"] = self._timed(lambda: self.g.embed_image(jpeg))
-            changed = True
-        if changed:
-            self.cache[item.key] = f
-            if self.cache_path:
-                self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.cache_path, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(f) + "\n")
+        try:
+            if item.image_path is not None and need_text and "ocr_text" not in f:
+                jpeg = image_bytes(item)
+                f["ocr_text"], f["ocr_ms"] = self._timed(lambda: self.g.ocr(jpeg))
+                changed = True
+            if need_text and "text_emb" not in f:
+                text = item.query if item.query is not None else f["ocr_text"]
+                if text.strip():
+                    f["text_emb"], f["text_emb_ms"] = self._timed(lambda: self.g.embed_text(text))
+                else:
+                    f["text_emb"], f["text_emb_ms"] = None, 0.0
+                changed = True
+            if need_image and "image_emb" not in f:
+                jpeg = jpeg or image_bytes(item)
+                f["image_emb"], f["image_emb_ms"] = self._timed(lambda: self.g.embed_image(jpeg))
+                changed = True
+        finally:
+            if changed:
+                self.cache[item.key] = f
+                if self.cache_path:
+                    self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(self.cache_path, "a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(f) + "\n")
         return f
 
     def search(self, mode: str, f: dict, query_norm: str) -> tuple[list[str], float]:

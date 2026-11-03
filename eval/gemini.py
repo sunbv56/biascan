@@ -1,4 +1,5 @@
 import math
+import time
 
 from common import Settings, Throttle, with_retry
 
@@ -18,12 +19,17 @@ class Gemini:
         self.s = s
         self.client = genai.Client(api_key=s.gemini_api_key)
         self.throttle = Throttle(min_interval)
+        self.last_call_ms: float | None = None
 
     def _call(self, fn):
         def run():
             self.throttle.wait()
-            return fn()
+            t0 = time.perf_counter()
+            out = fn()
+            self.last_call_ms = (time.perf_counter() - t0) * 1000
+            return out
 
+        self.last_call_ms = None
         return with_retry(run)
 
     def generate(self, prompt: str, model: str | None = None, temperature: float = 0.7) -> str:
