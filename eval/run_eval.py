@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import DATA_DIR, DEFAULT_RESULTS, MODES, N_BOOKS, OUT_DIR, SETS, Throttle, read_jsonl, settings, write_jsonl
+from common import (DATA_DIR, DEFAULT_RESULTS, MODES, N_BOOKS, OUT_DIR, SETS, QuotaStop, Throttle, read_jsonl,
+                    settings, write_jsonl)
 from metrics import rank_of, summarize
 from textnorm import normalize
 
@@ -90,7 +91,7 @@ class N8nBackend:
             data = resp.json()
             ids = [r["image_id"] for r in data.get("results", [])]
             return {m: {"ids": ids, "latency_ms": ms, "ocr_text": data.get("ocr_text")} for m in modes}
-        raise RuntimeError("429 liên tục")
+        raise QuotaStop("n8n trả 429 liên tục (rate limit theo phút/ngày)")
 
 
 def vec(v: list[float] | None) -> str | None:
@@ -194,6 +195,7 @@ def evaluate(items: list[Item], backend, requested_modes: list[str], log=print) 
             continue
         base = {"set": item.set, "expected_id": item.expected_id,
                 "query": item.query if item.query is not None else item.image_path.name}
+        stop = None
         try:
             res = backend.run(item, modes)
             for m in modes:
@@ -202,9 +204,13 @@ def evaluate(items: list[Item], backend, requested_modes: list[str], log=print) 
                                 "latency_ms": r["latency_ms"], "ocr_text": r.get("ocr_text"),
                                 "top_ids": r["ids"][:TOP_K], "error": None})
         except Exception as exc:  # noqa: BLE001
+            stop = str(exc)[:300] if isinstance(exc, QuotaStop) else None
             for m in modes:
                 records.append({**base, "mode": m, "rank": None, "latency_ms": None,
                                 "ocr_text": None, "top_ids": [], "error": str(exc)[:300]})
+        if stop:
+            log(f"DỪNG ở mẫu {i}/{len(items)}: {stop}")
+            break
         if i % 10 == 0 or i == len(items):
             log(f"  {item.set}: {i}/{len(items)}")
     return records

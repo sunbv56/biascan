@@ -91,6 +91,9 @@ dòng đầu trùng tên sách), được dặn từ cấm, rồi mỗi câu b�
 dấu, đ→d): loại nếu chứa nguyên tên sách, phần chính của tên (trước `-`, `:`, `(`, "tập"), 4 từ liền
 nhau của tên, hoặc tên tác giả (bỏ "Nhiều tác giả", tên < 4 ký tự). Câu vi phạm được viết lại 1 lần,
 vẫn sai thì bỏ cuốn đó, lấy cuốn kế. Mọi câu bị loại ghi ở `rejected.jsonl` để xem lại.
+Mỗi cuốn xong là ghi ngay vào `manifest.jsonl`; chạy lại thì làm tiếp từ chỗ dừng (bỏ qua cuốn đã có
+câu hoặc đã bị loại 2 lần). Hết quota Gemini thì script dừng hẳn thay vì đánh dấu loại từng cuốn.
+Muốn tạo lại từ đầu thì xoá `data/text_query/`.
 Giới hạn: câu vẫn có thể lộ tên nhân vật/bộ truyện không nằm trong tên sách — nên đọc lướt manifest.
 
 **Các chỉ số.** Mỗi truy vấn có đúng 1 sách đáp án; hệ thống trả top 10.

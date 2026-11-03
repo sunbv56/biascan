@@ -81,11 +81,21 @@ def mock_generate(prompt: str) -> str:
 
 
 def build_text_query(books, n, seed, out_dir: Path, generate, log=print):
-    rows, rejected = [], []
+    from common import QuotaStop
+
+    manifest, rejected_path = out_dir / "manifest.jsonl", out_dir / "rejected.jsonl"
+    rows, rejected = read_jsonl(manifest), read_jsonl(rejected_path)
+    done = {r["expected_id"] for r in rows}
+    gave_up = {r["expected_id"] for r in rejected if r.get("attempt") == 2}
+    if rows:
+        log(f"text_query: chạy tiếp từ {len(rows)} câu đã có trong {manifest}")
     pool = [b for b in sample(books, seed + 1) if len(clean_description(b["title"], b["description"])) >= 150]
+    stopped = None
     for book in pool:
-        if len(rows) >= n:
+        if len(rows) >= n or stopped:
             break
+        if book["image_id"] in done or book["image_id"] in gave_up:
+            continue
         desc = clean_description(book["title"], book["description"])
         forbidden = [book["title"], main_title(book["title"])] + [
             a.strip() for a in re.split(r",|;|&", book["author"]) if a.strip()
@@ -97,6 +107,9 @@ def build_text_query(books, n, seed, out_dir: Path, generate, log=print):
             )
             try:
                 query = tidy_query(generate(prompt))
+            except QuotaStop as exc:
+                stopped = str(exc)
+                break
             except Exception as exc:  # noqa: BLE001
                 rejected.append({"expected_id": book["image_id"], "query": None, "reasons": [f"lỗi gọi model: {exc}"]})
                 break
@@ -108,9 +121,14 @@ def build_text_query(books, n, seed, out_dir: Path, generate, log=print):
                 break
             rejected.append({"expected_id": book["image_id"], "query": query, "reasons": reasons, "attempt": attempt + 1})
             extra = "Lần trước bạn vi phạm (" + "; ".join(reasons) + "). Viết lại, tránh hoàn toàn các từ cấm."
-    write_jsonl(out_dir / "manifest.jsonl", rows)
-    write_jsonl(out_dir / "rejected.jsonl", rejected)
+        write_jsonl(manifest, rows)
+        write_jsonl(rejected_path, rejected)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_jsonl(manifest, rows)
+    write_jsonl(rejected_path, rejected)
     log(f"text_query: {len(rows)} câu hợp lệ, {len(rejected)} lần bị loại → {out_dir}")
+    if stopped:
+        log(f"DỪNG vì hết quota: {stopped}. Chạy lại lệnh sau để làm tiếp.")
     if len(rows) < n:
         log(f"CẢNH BÁO: chỉ được {len(rows)}/{n}")
     return rows, rejected

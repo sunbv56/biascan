@@ -95,9 +95,15 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
+class QuotaStop(RuntimeError):
+    """Hết quota/rate limit sau khi đã thử lại: dừng cả lượt chạy thay vì đánh trượt từng mẫu."""
+
+
 def is_rate_limit_error(exc: Exception) -> bool:
-    msg = str(exc)
-    return "429" in msg or "RESOURCE_EXHAUSTED" in msg or "rate" in msg.lower()
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code == 429
+    return "RESOURCE_EXHAUSTED" in str(exc)
 
 
 def with_retry(fn, *, attempts: int = 5, base_wait: float = 10.0, sleep=time.sleep):
@@ -105,8 +111,10 @@ def with_retry(fn, *, attempts: int = 5, base_wait: float = 10.0, sleep=time.sle
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001
-            if i == attempts - 1 or not is_rate_limit_error(exc):
+            if not is_rate_limit_error(exc):
                 raise
+            if i == attempts - 1:
+                raise QuotaStop(f"Vẫn bị rate limit sau {attempts} lần: {str(exc)[:200]}") from exc
             sleep(base_wait * (2**i))
 
 
