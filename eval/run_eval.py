@@ -284,7 +284,11 @@ def main(argv=None) -> int:
     ap.add_argument("--min-interval", type=float, default=None,
                     help="giây giữa 2 request (mặc định n8n 6.5 vì rate limit 10/phút, direct 4.5 cho Gemini free)")
     ap.add_argument("--n-books", type=int, default=N_BOOKS)
+    ap.add_argument("--max-error-rate", type=float, default=0.05,
+                    help="tỉ lệ truy vấn lỗi tối đa; vượt thì không ghi results.json (mặc định 0.05)")
     args = ap.parse_args(argv)
+    if args.limit and args.out.resolve() == DEFAULT_RESULTS.resolve():
+        ap.error("--limit là chạy thử: thêm --out <file khác> để không ghi đè web/public/eval/results.json")
 
     s = settings()
     sets = [x for x in args.sets.split(",") if x]
@@ -318,10 +322,15 @@ def main(argv=None) -> int:
         with conn.cursor() as cur:
             cur.execute("select count(*) from books")
             n_books = cur.fetchone()[0]
+            if {"image", "hybrid"} & set(modes) and any(x != "text_query" for x in sets):
+                cur.execute("select count(*) from books where image_embedding is not null")
+                if cur.fetchone()[0] == 0:
+                    raise SystemExit("DB chưa có image_embedding nào: bỏ image,hybrid khỏi --modes")
         gem = Gemini(s, min_interval=4.5 if args.min_interval is None else args.min_interval)
         backend = DirectBackend(s, gem, conn.cursor, OUT_DIR / "cache" / f"direct-{s.ocr_model}-{s.embed_model}-{s.embed_dims}.jsonl")
         models = {"ocr": s.ocr_model, "embed": s.embed_model, "rerank": "không dùng (direct)"}
 
+    planned = sum(len(backend.modes(it, modes)) for it in items)
     try:
         records = evaluate(items, backend, modes)
     finally:
@@ -331,6 +340,11 @@ def main(argv=None) -> int:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     write_jsonl(OUT_DIR / f"details-{args.via}-{stamp}.jsonl", records)
     errors = sum(1 for r in records if r["error"])
+    details = OUT_DIR / f"details-{args.via}-{stamp}.jsonl"
+    if len(records) < planned or not records or errors / len(records) > args.max_error_rate:
+        print(f"KHÔNG ghi {args.out}: chạy {len(records)}/{planned} lượt, {errors} lỗi "
+              f"(ngưỡng {args.max_error_rate:.0%}). Xem {details}, sửa rồi chạy lại (cache giữ kết quả đã có).")
+        return 2
     previous = None
     if args.merge and args.out.exists():
         previous = json.loads(args.out.read_text(encoding="utf-8"))
@@ -338,7 +352,7 @@ def main(argv=None) -> int:
     write_results(args.out, results)
     for run in results["runs"]:
         print(json.dumps(run, ensure_ascii=False))
-    print(f"Lỗi: {errors} (tính là trượt). Chi tiết: {OUT_DIR}/details-{args.via}-{stamp}.jsonl")
+    print(f"Lỗi: {errors} (tính là trượt). Chi tiết: {details}")
     print(f"Đã ghi {args.out}")
     return 0
 

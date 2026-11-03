@@ -68,7 +68,10 @@ python run_eval.py --via direct --limit 5 --out /tmp/r.json # chạy thử
   là số đo của lần gọi đầu).
 - `--merge` giữ lại các dòng `(set, mode)` đã có trong `results.json`, chỉ thay dòng vừa chạy lại.
 - Truy vấn lỗi (HTTP, timeout) được tính là **trượt** và không tính vào latency; chi tiết từng truy vấn
-  ở `eval/out/details-*.jsonl`.
+  ở `eval/out/details-*.jsonl`. Nếu lỗi quá `--max-error-rate` (mặc định 5%) hoặc lượt chạy dừng giữa
+  chừng vì hết quota (429 liên tục) thì **không ghi** `results.json`, để trang `/eval` không hiện số sai.
+- `--limit` bắt buộc đi kèm `--out` khác `web/public/eval/results.json`.
+- `--via direct` với mode `image`/`hybrid` từ chối chạy nếu DB chưa có `image_embedding` nào.
 
 `python make_placeholder.py` ghi `results.json` với `status: placeholder`, mọi chỉ số `null` (chỉ giữ
 `n` dự kiến) để web hiện "chưa đo" khi chưa chạy thật.
