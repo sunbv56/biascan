@@ -37,14 +37,14 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "jsCode": "const req = $('Webhook chat').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nconst message = typeof body.message === 'string' ? body.message.trim() : '';\nlet context_ids = [];\nlet input_error = '';\n\nif (!session_id) input_error = 'Thiếu session_id.';\nelse if (session_id.length > 200) input_error = 'session_id quá dài.';\nelse if (!message) input_error = 'Thiếu message.';\nelse if (message.length > 2000) input_error = 'Tin nhắn quá dài (tối đa 2000 ký tự).';\nelse if (body.context_ids !== undefined && body.context_ids !== null) {\n  if (!Array.isArray(body.context_ids) || body.context_ids.some((id) => typeof id !== 'string')) {\n    input_error = 'context_ids phải là mảng chuỗi.';\n  } else {\n    context_ids = [...new Set(body.context_ids.map((id) => id.trim()).filter(Boolean))].slice(0, 20);\n  }\n}\n\nreturn [{\n  json: {\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    session_id,\n    message,\n    context_ids,\n    cfg: {\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n    },\n  },\n}];\n"
+        "jsCode": "const req = $('Webhook chat').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\n// n8n.thuanbt.id.vn chạy sau Fly proxy: chỉ fly-client-ip do proxy đặt; cf-connecting-ip / x-forwarded-for client tự gửi được.\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['fly-client-ip'] || '').trim()\n  || String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nconst message = typeof body.message === 'string' ? body.message.trim() : '';\nlet context_ids = [];\nlet input_error = '';\n\nif (!session_id) input_error = 'Thiếu session_id.';\nelse if (session_id.length > 200) input_error = 'session_id quá dài.';\nelse if (!message) input_error = 'Thiếu message.';\nelse if (message.length > 2000) input_error = 'Tin nhắn quá dài (tối đa 2000 ký tự).';\nelse if (body.context_ids !== undefined && body.context_ids !== null) {\n  if (!Array.isArray(body.context_ids) || body.context_ids.some((id) => typeof id !== 'string')) {\n    input_error = 'context_ids phải là mảng chuỗi.';\n  } else {\n    context_ids = [...new Set(body.context_ids.map((id) => id.trim()).filter(Boolean))].slice(0, 20);\n  }\n}\n\nreturn [{\n  json: {\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    session_id,\n    message,\n    context_ids,\n    cfg: {\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n    },\n  },\n}];\n"
       },
       "id": "856759d0-0e02-549a-8c2c-6b42c959ed36",
       "name": "Kiểm tra token & đầu vào",
@@ -110,7 +110,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
@@ -272,7 +272,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
@@ -352,7 +352,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       }
     },
@@ -442,7 +442,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
@@ -515,7 +515,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       }
     },
@@ -592,7 +592,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       }
     },

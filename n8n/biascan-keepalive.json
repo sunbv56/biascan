@@ -26,11 +26,11 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "select 1 as ok;",
+        "query": "select public.keepalive() as ok;",
         "options": {}
       },
-      "id": "f437c3fe-7a4c-57d3-a996-7a52b894627c",
-      "name": "Postgres select 1",
+      "id": "0fcf893d-9781-528b-bc87-c770b1769cf8",
+      "name": "Gọi keepalive()",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
@@ -40,13 +40,13 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       }
     },
     {
       "parameters": {
-        "content": "## Keep-alive\nSupabase free tự pause project sau 7 ngày không hoạt động. Workflow chạy `select 1` lúc 03:17 mỗi ngày (theo timezone của n8n).",
+        "content": "## Keep-alive\nSupabase free tự pause project sau 7 ngày không hoạt động. Workflow gọi `select public.keepalive()` lúc 03:17 mỗi ngày (theo timezone của n8n).",
         "height": 180,
         "width": 420,
         "color": 7
@@ -66,7 +66,7 @@
       "main": [
         [
           {
-            "node": "Postgres select 1",
+            "node": "Gọi keepalive()",
             "type": "main",
             "index": 0
           }

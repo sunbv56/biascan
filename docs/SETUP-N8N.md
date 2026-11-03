@@ -6,7 +6,7 @@ Ba workflow trong `n8n/` chạy toàn bộ luồng runtime trên `https://n8n.th
 |---|---|---|
 | `biascan-search.json` | `POST /webhook/biascan-search` | token → rate limit → OCR bìa → embed → `match_books_text` / `match_books_hybrid` → Gemini rerank |
 | `biascan-chat.json` | `POST /webhook/biascan-chat` | token → rate limit → AI Agent (Gemini + Postgres Chat Memory + tool `tim_sach`) |
-| `biascan-keepalive.json` | mỗi ngày 03:17 | `select 1` để Supabase free không bị pause |
+| `biascan-keepalive.json` | mỗi ngày 03:17 | `select public.keepalive()` để Supabase free không bị pause |
 
 Yêu cầu: n8n self-hosted bản community **1.100 trở lên** (đã thử import và chạy trên 1.123.5 và 2.41.6).
 Không dùng Variables (`$vars`) nên không cần bản trả phí. Trước khi làm, Supabase phải chạy xong
@@ -42,7 +42,9 @@ Các khoá khác (`chat_model`, `ocr_model`, `embed_model`, `embed_dims`, `top_k
 Vào **Credentials → Add credential**. Tên phải đặt **đúng như dưới đây**, vì workflow tham chiếu
 credential theo tên này.
 
-### 2.1 `BiaScan Supabase Postgres` — kiểu **Postgres**
+### 2.1 `Supabase BiaScan` — kiểu **Postgres**
+
+Trùng tên với credential ở bước 5 của `docs/SETUP-SUPABASE.md`; đã tạo ở đó thì bỏ qua mục này.
 
 Lấy ở Supabase → Project Settings → Database → Connection string → **Session pooler**:
 
@@ -54,6 +56,7 @@ Lấy ở Supabase → Project Settings → Database → Connection string → *
 | Password | mật khẩu database |
 | Port | `5432` (session pooler; không dùng 6543) |
 | SSL | `Require`. Nếu Test báo lỗi chứng chỉ (self-signed certificate), bật **Ignore SSL Issues** |
+| Maximum Number of Connections | `5` (Supabase free giới hạn số kết nối pooler) |
 
 ### 2.2 `BiaScan Gemini` — kiểu **Header Auth**
 
@@ -84,7 +87,7 @@ File JSON chỉ chứa id giả (`biascanSupabasePg`, `biascanGeminiKey`, `biasc
 |---|---|
 | tìm sách | Postgres: Tải app_config, Đếm rate limit, Tìm theo text, Tìm hybrid. Header Auth: Gemini OCR bìa, Gemini embed câu hỏi, Gemini embed ảnh, Gemini rerank |
 | chat tư vấn | Postgres: Tải app_config, Đếm rate limit, Sách đang xem, Lấy thẻ sách, Tool: tải app_config, Tool: match_books_text, Postgres Chat Memory. Header Auth: Tool: Gemini embed. PaLM: Gemini Chat Model |
-| keep-alive | Postgres: Postgres select 1 |
+| keep-alive | Postgres: Gọi keepalive() |
 
 Nên import qua giao diện. Khi thử trên 1.123.5, `n8n import:workflow` (CLI) import được, nhưng
 bật Active cho workflow đó (cả bằng CLI lẫn API) đều lỗi `FOREIGN KEY constraint failed`. Tạo
@@ -161,11 +164,12 @@ Kết quả mong đợi:
 - chat: `200 {"reply": "...markdown", "suggestions": [...], "products": [card...]}`.
 - Lỗi: `401 unauthorized` (thiếu hoặc sai token, hoặc chưa insert `biascan_token`), `429 rate_limited`,
   `400 bad_request` (thiếu `session_id`, thiếu cả `query` lẫn `image`, ảnh > 4 MB hoặc không phải
-  JPEG/PNG/WEBP/HEIC, `context_ids` không phải mảng chuỗi), `502 upstream` (Gemini hoặc Postgres lỗi).
+  JPEG/PNG/WEBP/HEIC, `context_ids` không phải mảng chuỗi, hoặc chỉ gửi ảnh mà OCR không đọc được chữ nào), `502 upstream` (Gemini hoặc Postgres lỗi).
 
 ## 7. Sau lần chat đầu tiên: bật RLS cho `n8n_chat_histories`
 
-Node Postgres Chat Memory tự tạo bảng `public.n8n_chat_histories` ở lần chat đầu. Supabase mặc định
+`supabase/schema.sql` đã thu hồi quyền mặc định của `anon`/`authenticated` trên bảng mới trong `public`,
+nên bước này chỉ để chắc chắn. Node Postgres Chat Memory tự tạo bảng `public.n8n_chat_histories` ở lần chat đầu. Supabase mặc định
 cấp quyền bảng mới trong `public` cho `anon`, nên khoá anon có thể đọc lịch sử chat qua REST API.
 Chạy một lần sau khi bảng xuất hiện:
 
@@ -190,10 +194,15 @@ n8n kết nối bằng role `postgres`, là chủ bảng nên vẫn đọc/ghi b
   bỏ. Memory giữ 10 lượt gần nhất theo `session_id`.
 - **timings_ms** đo bằng `Date.now()` trong các node Code quanh từng bước. `total` tính từ lúc đọc
   xong `app_config`.
-- **IP** cho rate limit: `cf-connecting-ip`, nếu không có thì lấy phần tử đầu của `x-forwarded-for`,
-  nếu vẫn không có thì `unknown`.
+- **IP** cho rate limit: `fly-client-ip` (n8n.thuanbt.id.vn chạy sau Fly proxy, header này do proxy đặt),
+  nếu không có thì `cf-connecting-ip`, rồi phần tử đầu của `x-forwarded-for`, cuối cùng là `unknown`.
+  Hai header sau client tự gửi được, nên chỉ tin được khi n8n nằm sau Cloudflare. Đổi nơi host thì sửa
+  dòng `const ip = ...` trong node **Kiểm tra token & đầu vào** của cả 2 workflow.
 - **Dữ liệu execution**: workflow tìm sách đặt *Save successful executions = Do not save* để không lưu
   ảnh base64 vào DB của n8n. Execution lỗi vẫn được lưu. Khi cần debug, mở Workflow Settings và bật lại tạm thời.
-- **Thời gian chạy**: OCR → embed → search → rerank chạy tuần tự, thường vài giây. Cloudflare cắt ở 100 s.
-  Nếu đặt reverse proxy trước n8n, cần `proxy_read_timeout` ≥ 60 s.
+- **Thời gian chạy**: OCR → embed → search → rerank chạy tuần tự, thường vài giây. Web tự huỷ request ở
+  30 s, nên timeout từng bước đặt là OCR 15 s, embed 10 s, rerank 10 s (rerank quá hạn thì trả theo thứ tự
+  vector, không lỗi). Nếu đặt reverse proxy trước n8n, cần `proxy_read_timeout` ≥ 60 s.
+- **Ảnh không có chữ đọc được** (và không kèm `query`): trả `400 bad_request` kèm lời nhắc chụp lại,
+  không gọi embed. Kể cả khi `image_search_enabled=true`, workflow chưa tìm bằng riêng ảnh.
 - Sửa JSON bằng tay thì giữ nguyên tên node: các node Code tham chiếu nhau bằng `$('Tên node')`.

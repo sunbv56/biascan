@@ -37,14 +37,14 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "jsCode": "const req = $('Webhook tìm sách').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst MAX_IMAGE_BYTES = 4 * 1024 * 1024;\nconst IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];\n\nlet input_error = '';\nconst query = typeof body.query === 'string' ? body.query.replace(/\\s+/g, ' ').trim() : '';\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nlet image_mime = '';\nlet image_b64 = '';\n\nif (body.query !== undefined && body.query !== null && typeof body.query !== 'string') {\n  input_error = 'Trường query phải là chuỗi.';\n} else if (query.length > 1000) {\n  input_error = 'Mô tả quá dài (tối đa 1000 ký tự).';\n}\n\nif (!input_error && typeof body.image === 'string' && body.image.trim() !== '') {\n  const raw = body.image.trim();\n  const m = raw.match(/^data:([a-z0-9.+\\/-]+);base64,(.*)$/is);\n  image_mime = m ? m[1].toLowerCase() : 'image/jpeg';\n  image_b64 = (m ? m[2] : raw).replace(/\\s+/g, '');\n  if (image_mime === 'image/jpg') image_mime = 'image/jpeg';\n  const padding = image_b64.endsWith('==') ? 2 : image_b64.endsWith('=') ? 1 : 0;\n  const bytes = Math.floor((image_b64.length * 3) / 4) - padding;\n  if (!IMAGE_MIMES.includes(image_mime)) {\n    input_error = 'Định dạng ảnh không hỗ trợ (chỉ nhận JPEG, PNG, WEBP, HEIC).';\n  } else if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image_b64)) {\n    input_error = 'Ảnh không phải base64 hợp lệ.';\n  } else if (bytes > MAX_IMAGE_BYTES) {\n    input_error = 'Ảnh lớn hơn 4 MB, hãy nén lại trước khi gửi.';\n  }\n} else if (!input_error && body.image !== undefined && body.image !== null && typeof body.image !== 'string') {\n  input_error = 'Trường image phải là chuỗi data URL base64.';\n}\n\nif (!input_error && !session_id) input_error = 'Thiếu session_id.';\nelse if (!input_error && session_id.length > 200) input_error = 'session_id quá dài.';\nif (!input_error && !query && !image_b64) input_error = 'Cần ít nhất một trong hai: query hoặc image.';\n\nconst has_image = !input_error && image_b64 !== '';\n\nreturn [{\n  json: {\n    t_start: Date.now(),\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    query,\n    session_id,\n    has_image,\n    image_mime: has_image ? image_mime : '',\n    image_b64: has_image ? image_b64 : '',\n    cfg: {\n      ocr_model: String(cfg.ocr_model || 'gemini-flash-latest').trim(),\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      embed_model: String(cfg.embed_model || 'gemini-embedding-2').trim(),\n      embed_dims: posInt(cfg.embed_dims, 768),\n      top_k: Math.min(posInt(cfg.top_k, 10), 50),\n      rerank_k: Math.min(posInt(cfg.rerank_k, 3), 10),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n      image_search_enabled: String(cfg.image_search_enabled || '').trim().toLowerCase() === 'true',\n    },\n  },\n}];\n"
+        "jsCode": "const req = $('Webhook tìm sách').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\n// n8n.thuanbt.id.vn chạy sau Fly proxy: chỉ fly-client-ip do proxy đặt; cf-connecting-ip / x-forwarded-for client tự gửi được.\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['fly-client-ip'] || '').trim()\n  || String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst MAX_IMAGE_BYTES = 4 * 1024 * 1024;\nconst IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];\n\nlet input_error = '';\nconst query = typeof body.query === 'string' ? body.query.replace(/\\s+/g, ' ').trim() : '';\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nlet image_mime = '';\nlet image_b64 = '';\n\nif (body.query !== undefined && body.query !== null && typeof body.query !== 'string') {\n  input_error = 'Trường query phải là chuỗi.';\n} else if (query.length > 1000) {\n  input_error = 'Mô tả quá dài (tối đa 1000 ký tự).';\n}\n\nif (!input_error && typeof body.image === 'string' && body.image.trim() !== '') {\n  const raw = body.image.trim();\n  const m = raw.match(/^data:([a-z0-9.+\\/-]+);base64,(.*)$/is);\n  image_mime = m ? m[1].toLowerCase() : 'image/jpeg';\n  image_b64 = (m ? m[2] : raw).replace(/\\s+/g, '');\n  if (image_mime === 'image/jpg') image_mime = 'image/jpeg';\n  const padding = image_b64.endsWith('==') ? 2 : image_b64.endsWith('=') ? 1 : 0;\n  const bytes = Math.floor((image_b64.length * 3) / 4) - padding;\n  if (!IMAGE_MIMES.includes(image_mime)) {\n    input_error = 'Định dạng ảnh không hỗ trợ (chỉ nhận JPEG, PNG, WEBP, HEIC).';\n  } else if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image_b64)) {\n    input_error = 'Ảnh không phải base64 hợp lệ.';\n  } else if (bytes > MAX_IMAGE_BYTES) {\n    input_error = 'Ảnh lớn hơn 4 MB, hãy nén lại trước khi gửi.';\n  }\n} else if (!input_error && body.image !== undefined && body.image !== null && typeof body.image !== 'string') {\n  input_error = 'Trường image phải là chuỗi data URL base64.';\n}\n\nif (!input_error && !session_id) input_error = 'Thiếu session_id.';\nelse if (!input_error && session_id.length > 200) input_error = 'session_id quá dài.';\nif (!input_error && !query && !image_b64) input_error = 'Cần ít nhất một trong hai: query hoặc image.';\n\nconst has_image = !input_error && image_b64 !== '';\n\nreturn [{\n  json: {\n    t_start: Date.now(),\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    query,\n    session_id,\n    has_image,\n    image_mime: has_image ? image_mime : '',\n    image_b64: has_image ? image_b64 : '',\n    cfg: {\n      ocr_model: String(cfg.ocr_model || 'gemini-flash-latest').trim(),\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      embed_model: String(cfg.embed_model || 'gemini-embedding-2').trim(),\n      embed_dims: posInt(cfg.embed_dims, 768),\n      top_k: Math.min(posInt(cfg.top_k, 10), 50),\n      rerank_k: Math.min(posInt(cfg.rerank_k, 3), 10),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n      image_search_enabled: String(cfg.image_search_enabled || '').trim().toLowerCase() === 'true',\n    },\n  },\n}];\n"
       },
       "id": "211a7112-8700-5515-ad3a-2b0fb09463c4",
       "name": "Kiểm tra token & đầu vào",
@@ -110,7 +110,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
@@ -312,7 +312,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.ocr_request) }}",
         "options": {
-          "timeout": 30000
+          "timeout": 15000
         }
       },
       "id": "8a61e6fa-6fd4-5f5d-ad75-69af82839d5d",
@@ -361,7 +361,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $input.first().json;\nconst norm = (s) => String(s || '')\n  .replace(/đ/g, 'd').replace(/Đ/g, 'D')\n  .normalize('NFD').replace(/\\p{Mn}/gu, '').normalize('NFC')\n  .toLowerCase().replace(/\\s+/g, ' ').trim();\n\nconst query_text = [ctx.ocr_text, ctx.query].filter(Boolean).join('\\n');\nconst query_norm = norm(ctx.ocr_title || ctx.query);\nconst request = {\n  content: { parts: [{ text: query_text }] },\n  outputDimensionality: ctx.cfg.embed_dims,\n};\n// gemini-embedding-2 từ chối taskType; model cũ (gemini-embedding-001...) thì dùng RETRIEVAL_QUERY.\nif (!ctx.cfg.embed_model.startsWith('gemini-embedding-2')) request.taskType = 'RETRIEVAL_QUERY';\n\nreturn [{\n  json: {\n    ...ctx,\n    query_text,\n    query_norm,\n    do_image_embed: Boolean(ctx.has_image && ctx.cfg.image_search_enabled),\n    embed_request: request,\n    t_embed: Date.now(),\n  },\n}];\n"
+        "jsCode": "const ctx = $input.first().json;\nconst norm = (s) => String(s || '')\n  .replace(/đ/g, 'd').replace(/Đ/g, 'D')\n  .normalize('NFD').replace(/\\p{Mn}/gu, '').normalize('NFC')\n  .toLowerCase().replace(/\\s+/g, ' ').trim();\n\nconst query_text = [ctx.ocr_text, ctx.query].filter(Boolean).join('\\n');\nconst query_norm = norm(ctx.ocr_title || ctx.query);\nconst request = {\n  content: { parts: [{ text: query_text }] },\n  outputDimensionality: ctx.cfg.embed_dims,\n};\n// gemini-embedding-2 từ chối taskType; model cũ (gemini-embedding-001...) thì dùng RETRIEVAL_QUERY.\nif (!ctx.cfg.embed_model.startsWith('gemini-embedding-2')) request.taskType = 'RETRIEVAL_QUERY';\n\nreturn [{\n  json: {\n    ...ctx,\n    query_text,\n    query_norm,\n    has_text: query_text.trim() !== '',\n    do_image_embed: Boolean(ctx.has_image && ctx.cfg.image_search_enabled),\n    embed_request: request,\n    t_embed: Date.now(),\n  },\n}];\n"
       },
       "id": "ee56d8b8-d3f5-5da8-8422-7816c0212d4c",
       "name": "Chuẩn bị embed",
@@ -375,6 +375,58 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1e0a2702-d307-5262-8e4e-7b0174d03419",
+              "leftValue": "={{ $json.has_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "787008c3-524a-58b6-b13f-894cc669a4bb",
+      "name": "Có chữ để tìm?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2530,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: 'Không đọc được chữ trên ảnh bìa. Hãy chụp lại rõ và thẳng hơn, hoặc nhập mô tả sách.' } }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "4b1e798e-7c3e-56ac-b014-04e88f2d84e6",
+      "name": "Trả 400 không đọc được bìa",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2750,
+        300
+      ]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.cfg.embed_model }}:embedContent",
         "authentication": "genericCredentialType",
@@ -383,7 +435,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.embed_request) }}",
         "options": {
-          "timeout": 20000
+          "timeout": 10000
         }
       },
       "id": "46217a30-6d5b-5450-89bc-4037b272bb90",
@@ -461,7 +513,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ content: { parts: [{ inlineData: { mimeType: $json.image_mime, data: $json.image_b64 } }] }, outputDimensionality: $json.cfg.embed_dims }) }}",
         "options": {
-          "timeout": 20000
+          "timeout": 10000
         }
       },
       "id": "b0794d82-5488-537e-aac3-c82a469309e1",
@@ -513,7 +565,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
@@ -537,7 +589,7 @@
       "credentials": {
         "postgres": {
           "id": "biascanSupabasePg",
-          "name": "BiaScan Supabase Postgres"
+          "name": "Supabase BiaScan"
         }
       },
       "onError": "continueErrorOutput"
@@ -601,7 +653,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.rerank_request) }}",
         "options": {
-          "timeout": 30000
+          "timeout": 10000
         }
       },
       "id": "5d11bc05-ac48-5431-a19a-964f47338770",
@@ -881,7 +933,7 @@
       "main": [
         [
           {
-            "node": "Gemini embed câu hỏi",
+            "node": "Có chữ để tìm?",
             "type": "main",
             "index": 0
           }
@@ -889,6 +941,24 @@
         [
           {
             "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có chữ để tìm?": {
+      "main": [
+        [
+          {
+            "node": "Gemini embed câu hỏi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 400 không đọc được bìa",
             "type": "main",
             "index": 0
           }
