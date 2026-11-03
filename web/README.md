@@ -43,17 +43,27 @@ npm run lint
 NODE_OPTIONS=--max-old-space-size=4096 npm run build
 ```
 
-n8n phải cho phép CORS từ `http://localhost:3000` và domain Vercel.
+Chạy local thì n8n phải cho phép CORS từ `http://localhost:3000` (đã có sẵn trong workflow).
 
 > Ổ NTFS (fuseblk): `next dev/build` trên ổ này hay lỗi ChunkLoadError/symlink. Khi đó sao chép thư mục sang ổ ext4
 > (vd `rsync -a --exclude node_modules --exclude .next web/ ~/.cache/biascan-run/web/`) rồi cài và chạy ở đó.
 
-## Deploy Vercel
+## Deploy (xuất tĩnh)
 
-1. Import repo, đặt **Root Directory** = `web`. Framework preset: Next.js (tự nhận).
-2. Thêm `NEXT_PUBLIC_N8N_BASE_URL` và `NEXT_PUBLIC_BIASCAN_TOKEN` cho Production (và Preview nếu cần).
-3. Thêm domain Vercel vào danh sách CORS của webhook n8n.
-4. Ảnh bìa từ `cdn0.fahasa.com` đi qua `next/image` (khai báo ở `next.config.ts`); ảnh ở host khác hiện không tối ưu.
+`next.config.ts` đặt `output: "export"`: build ra `out/` toàn HTML/JS/CSS (~1,4 MB), không cần server Node.
+Ảnh bìa tải thẳng từ `cdn0.fahasa.com` (`images.unoptimized`).
+
+Bản demo chạy ở `https://biascan.thuanbt.id.vn`, do Caddy trên proxy Fly phục vụ file tĩnh và chuyển tiếp
+`/webhook/biascan-search`, `/webhook/biascan-chat` sang n8n — cùng origin nên không cần CORS:
+
+```bash
+NEXT_PUBLIC_N8N_BASE_URL=/ NEXT_PUBLIC_BIASCAN_TOKEN=<token> npm run build
+# copy out/ sang thư mục biascan/ của repo proxy rồi fly deploy
+```
+
+Token và URL được nhúng lúc build, đổi thì phải build lại. Host khác (Cloudflare Pages, GitHub Pages,
+Vercel) cũng dùng được `out/`; khi đó đặt `NEXT_PUBLIC_N8N_BASE_URL=https://n8n.thuanbt.id.vn` và thêm
+domain vào CORS của 2 webhook n8n.
 
 ## Cập nhật số đo
 

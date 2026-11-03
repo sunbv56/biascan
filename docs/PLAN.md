@@ -12,7 +12,7 @@ chứng minh năng lực AI/LLM engineering bằng số đo thật, chạy demo 
 ## Kiến trúc
 
 ```
-Next.js (Vercel) ──POST──▶ n8n.thuanbt.id.vn (webhook, token header, rate limit theo IP)
+Next.js tĩnh (Caddy trên Fly, biascan.thuanbt.id.vn) ──POST──▶ n8n (webhook, token header, rate limit theo IP)
                               │
    ảnh ─▶ Gemini Flash OCR ─▶ text ─┐
    lời  ───────────────────────────┤─▶ gemini-embedding-2 (768d) ─▶ Supabase pgvector top-10
@@ -40,7 +40,7 @@ Next.js (Vercel) ──POST──▶ n8n.thuanbt.id.vn (webhook, token header, r
 
 - Header `x-biascan-token` + rate limit theo IP (bảng `rate_limits`).
 - Workflow keep-alive hằng ngày để Supabase free không bị pause sau 7 ngày.
-- Chi phí mục tiêu: 0đ (free tier Gemini, Supabase free, Vercel hobby).
+- Chi phí mục tiêu: 0đ (free tier Gemini, Supabase free, web tĩnh trên proxy Fly sẵn có).
 
 ## Đánh giá (`eval/`, trang `/eval`)
 
@@ -62,4 +62,4 @@ Next.js + Tailwind + GSAP, làm mới hoàn toàn theo Hallmark. Trang: landing,
 
 1. Tạo project Supabase (xem `docs/SETUP-SUPABASE.md`), chạy `supabase/schema.sql`.
 2. Tạo credential trong n8n, import `n8n/*.json`.
-3. Điền `.env`. Deploy Vercel.
+3. Điền `.env`. Build web tĩnh, deploy lên proxy Fly (`web/README.md`).

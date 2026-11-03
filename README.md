@@ -4,7 +4,7 @@ Tra cứu sách bằng **ảnh chụp bìa** hoặc **lời mô tả tự nhiên
 Fahasa (dataset [`sunbv56/vi-OCR_VQA-desc`](https://huggingface.co/datasets/sunbv56/vi-OCR_VQA-desc)).
 
 ```
-Next.js (Vercel) ──▶ n8n webhook (token + rate limit theo IP)
+Next.js tĩnh ──▶ n8n webhook (token + rate limit theo IP)
    ảnh ─▶ Gemini Flash OCR ─┐
    lời  ────────────────────┼─▶ gemini-embedding-2 (768d) ─▶ Supabase pgvector top-10 (+ khớp tên bỏ dấu)
                             └─▶ Gemini rerank top-3 kèm lý do ─▶ Gemini chat tư vấn
@@ -19,7 +19,7 @@ Next.js (Vercel) ──▶ n8n webhook (token + rate limit theo IP)
   Kết quả hiển thị ở trang `/eval` — chưa đo thì ghi "chưa đo", không có số dựng sẵn.
 - **Pipeline nạp dữ liệu idempotent** (`ingest/`): batch, resume, backoff theo `retryDelay`, giới hạn RPM.
 - **Đổi model không sửa code:** bảng `app_config` (chat / OCR / embedding / top_k / rate limit).
-- **Chi phí 0đ:** free tier Gemini, Supabase, Vercel; n8n tự host.
+- **Chi phí 0đ:** free tier Gemini, Supabase; web tĩnh + n8n tự host.
 
 ## Cấu trúc
 
@@ -37,7 +37,7 @@ Next.js (Vercel) ──▶ n8n webhook (token + rate limit theo IP)
 1. [`docs/SETUP-SUPABASE.md`](docs/SETUP-SUPABASE.md) — tạo project, chạy `supabase/schema.sql`.
 2. [`ingest/README.md`](ingest/README.md) — nạp dữ liệu.
 3. [`docs/SETUP-N8N.md`](docs/SETUP-N8N.md) — import workflow, tạo credential.
-4. [`web/README.md`](web/README.md) — chạy local / deploy Vercel.
+4. [`web/README.md`](web/README.md) — chạy local / deploy.
 5. [`eval/README.md`](eval/README.md) — đo và cập nhật trang `/eval`.
 
 Dữ liệu sách thuộc Fahasa, dùng cho mục đích minh hoạ; dự án không liên kết với Fahasa.

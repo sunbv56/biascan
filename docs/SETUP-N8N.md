@@ -102,7 +102,7 @@ Mở node **Webhook tìm sách** và **Webhook chat** → Options → **Allowed 
 https://biascan.vercel.app,http://localhost:3000
 ```
 
-Thay `https://biascan.vercel.app` bằng domain Vercel thật. Các origin cách nhau bằng dấu phẩy và
+Bản demo ở `https://biascan.thuanbt.id.vn` gọi webhook cùng origin qua Caddy nên không cần sửa mục này. Chỉ khi đưa web lên host khác mới thay `https://biascan.vercel.app` bằng domain đó. Các origin cách nhau bằng dấu phẩy và
 **không có dấu cách**, vì n8n tách chuỗi theo `,` mà không trim. n8n tự trả lời preflight `OPTIONS`:
 nó trả về đúng các header trình duyệt xin (gồm `x-biascan-token`), nên không cần node riêng cho
 `OPTIONS`.
