@@ -14,10 +14,11 @@ chứng minh năng lực AI/LLM engineering bằng số đo thật, chạy demo 
 ```
 Next.js tĩnh (Caddy trên Fly, biascan.thuanbt.id.vn) ──POST──▶ n8n (webhook, token header, rate limit theo IP)
                               │
-   ảnh ─▶ Gemini Flash OCR ─▶ text ─┐
-   lời  ───────────────────────────┤─▶ gemini-embedding-2 (768d) ─▶ Supabase pgvector top-10
-                                   │        + boost khớp tên không dấu
-                                   └─▶ Gemini rerank top-3 + lý do ─▶ Gemini chat trả lời + gợi ý
+   ảnh ─▶ [cache img:] ─▶ OCR (chuỗi llm_models) ─▶ text ─┐
+   lời  ─────────────────────────────────────────────────┤─▶ [cache q:] ─▶ gemini-embedding-2 (768d)
+                                                          │      ─▶ Supabase pgvector top-10 + boost tên
+   /biascan-explain: [cache why:] ─▶ 1 lần sinh lý do 1–3 cuốn (chuỗi llm_models)
+   /biascan-chat: embed tin nhắn ─▶ top chat_k + sách đang xem + lịch sử chat_turns ─▶ 1 lần sinh JSON
 ```
 
 - Luồng runtime **chỉ chạy trên n8n** `n8n.thuanbt.id.vn`. Không backend riêng.
@@ -25,13 +26,14 @@ Next.js tĩnh (Caddy trên Fly, biascan.thuanbt.id.vn) ──POST──▶ n8n (
 - Văn bản embed: `title + author + publisher + supplier + description[:2000]`.
 - Ảnh bìa (Q14): probe 100 ảnh đo token/ảnh + quota free. Nạp hết ≤3 ngày bằng free → làm,
   gộp với text bằng RRF; không thì để phase 2. Schema giữ sẵn cột `image_embedding`.
-- Chat memory: Postgres Chat Memory của n8n → Supabase.
+- Lịch sử chat: bảng `chat_turns` (workflow tự ghi). Giữ Gemini free tier: cache `search_cache`, không rerank,
+  chuỗi model dự phòng khi 429/5xx (xem `docs/CONTRACT.md`).
 
 ## Cấu hình (đổi model không sửa code)
 
 | Nơi | Chứa |
 |---|---|
-| Bảng `app_config` (Supabase) | model chat, OCR, embedding, dims, top_k, rerank_k, desc_max_chars, rate limit |
+| Bảng `app_config` (Supabase) | chuỗi model `llm_models`, embedding, dims, top_k, chat_k, cache_ttl_hours, desc_max_chars, rate limit |
 | n8n Credentials | Gemini API key, Postgres Supabase |
 | `.env` (`ingest/`, `eval/`) | key, DB URL, tên model (mặc định khớp `app_config`) |
 | `web/.env.local` | URL webhook + token công khai |

@@ -54,11 +54,16 @@ Boost: `similarity(title_norm, query_norm) >= 0.6` cộng vào score (text) đ�
   `desc_max_chars=2000`, `rate_limit_per_min=10`, `rate_limit_per_day=200`,
   `cache_ttl_hours=168`. (`chat_model`, `ocr_model`, `rerank_k` cũ không còn dùng.)
 - `search_cache(cache_key text primary key, payload jsonb, hits int default 0, created_at timestamptz default now())`
-  — `q:<query_norm>` → kết quả tìm bằng chữ; `img:<sha256 base64 ảnh>` → `{ocr_text, ocr_title}`;
-  `why:<query_norm>|<ids>` → lý do. Hết hạn theo `cache_ttl_hours`.
+  — `q:<chuẩn hoá(ocr_text + query)>` → `{results}` (chữ dài > 300 ký tự thì khoá là 200 ký tự đầu + băm);
+  `img:<sha256 hex của chuỗi base64 ảnh>` → `{ocr_text, ocr_title}` (OCR rỗng không cache);
+  `why:<chuẩn hoá(query)>|<image_ids sắp xếp, nối bằng |>` → `{reasons}`. Hết hạn theo `cache_ttl_hours`
+  (n8n lọc theo `created_at`; `purge_expired()` xoá hằng ngày). Tìm hybrid (`image_search_enabled=true`) không cache `q:`.
+  "Chuẩn hoá" = như `title_norm` và bỏ dấu câu.
 - `rate_limits(ip text, window_start timestamptz, count int, primary key(ip, window_start))`
   + hàm `hit_rate_limit(p_ip text, p_per_min int, p_per_day int) returns boolean` (true = vượt).
-- `n8n_chat_histories` — để node Postgres Chat Memory của n8n tự tạo; không tạo tay.
+- `chat_turns(id bigint identity primary key, session_id text, role text check in ('user','assistant'), content text, created_at timestamptz default now())`
+  — lịch sử chat do workflow tự ghi (mỗi lượt 2 dòng); index `(session_id, id desc)`. Không dùng `n8n_chat_histories` nữa.
+- `purge_expired() returns int` — xoá `search_cache` quá `cache_ttl_hours` và `chat_turns` cũ hơn 30 ngày; workflow keep-alive gọi hằng ngày.
 
 ## n8n webhook (`https://n8n.thuanbt.id.vn/webhook/...`)
 
@@ -96,7 +101,8 @@ tìm hoặc chữ OCR). Response 200: `{ "reasons": { "<image_id>": "1 câu ≤ 
 Request: `{ "session_id": string, "message": string, "context_ids"?: string[] }`
 Luồng cố định, **1 lần gọi model**: embed `message` → `match_books_text` lấy `chat_k` cuốn + sách trong
 `context_ids` → 1 lần sinh JSON `{reply, suggestions, picks}` (chuỗi dự phòng) → `products` = các cuốn
-trong `picks` (chỉ id có trong ngữ cảnh). Lịch sử: 6 lượt gần nhất trong `n8n_chat_histories`.
+trong `picks` (chỉ id có trong ngữ cảnh, tối đa 4). Lịch sử: 6 dòng gần nhất trong `chat_turns` theo `session_id`
+(= 3 cặp hỏi–đáp); ghi 2 dòng mới sau khi trả lời.
 Response 200: `{ "reply": "markdown", "suggestions": ["câu gợi ý tiếp", ...], "products": [<card như trên, không cần score/reason>] }`
 
 ### Lỗi
@@ -104,6 +110,8 @@ Response 200: `{ "reply": "markdown", "suggestions": ["câu gợi ý tiếp", ..
 `401 {"error":{"code":"unauthorized","message":"..."}}`, `429 {"error":{"code":"rate_limited",...}}`,
 `429 quota_exhausted` (mọi model trong chuỗi / embedding hết quota Gemini: "Demo đã dùng hết lượt miễn
 phí hôm nay, vui lòng thử lại sau 15:00 (giờ Việt Nam)."), `400 bad_request`, `502 upstream`.
+Quy tắc: request thất bại mà có ít nhất một lần gọi Gemini trả 429 (embed hoặc bất kỳ model nào trong chuỗi) ⇒
+`quota_exhausted`; thất bại vì lỗi khác (5xx, timeout, DB) ⇒ `502 upstream`.
 Thông điệp tiếng Việt.
 
 ## Kết quả đánh giá — `web/public/eval/results.json`

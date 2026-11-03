@@ -56,12 +56,13 @@ create table if not exists public.app_config (
 );
 
 insert into public.app_config (key, value, note) values
-  ('chat_model',         'gemini-2.5-flash-lite', 'Model Gemini trả lời chat + rerank'),
-  ('ocr_model',          'gemini-2.5-flash', 'Model Gemini đọc chữ trên ảnh bìa'),
+  ('llm_models',         'gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash',
+                         'Chuỗi model dự phòng cho OCR, chat, giải thích (tối đa 3, cách nhau dấu phẩy)'),
   ('embed_model',        'gemini-embedding-2',  'Model embedding; đổi thì phải ingest lại toàn bộ'),
   ('embed_dims',         '768',                 'Số chiều vector; phải khớp vector(768) của bảng books'),
   ('top_k',              '10',                  'Số kết quả trả về cho web'),
-  ('rerank_k',           '3',                   'Số kết quả đầu cho Gemini rerank + lý do'),
+  ('chat_k',             '5',                   'Số sách tìm theo tin nhắn đưa vào ngữ cảnh chat'),
+  ('cache_ttl_hours',    '168',                 'Thời hạn cache search_cache (giờ)'),
   ('desc_max_chars',     '2000',                'Cắt mô tả khi ghép văn bản embed'),
   ('rate_limit_per_min', '10',                  'Số request tối đa / IP / phút'),
   ('rate_limit_per_day', '200',                 'Số request tối đa / IP / 24 giờ')
@@ -104,6 +105,30 @@ begin
   return v_min_cnt > p_per_min or v_day_cnt > p_per_day;
 end;
 $$;
+
+-- ---------------------------------------------------------------- search_cache
+-- q:<chữ tìm chuẩn hoá> → {results}; img:<sha256 base64 ảnh> → {ocr_text, ocr_title};
+-- why:<query chuẩn hoá>|<ids> → {reasons}. Hết hạn sau cache_ttl_hours (n8n lọc theo created_at).
+create table if not exists public.search_cache (
+  cache_key  text primary key,
+  payload    jsonb not null,
+  hits       int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists search_cache_created_at_idx on public.search_cache (created_at);
+
+-- ---------------------------------------------------------------- chat_turns
+-- Lịch sử chat do workflow tự ghi (thay Postgres Chat Memory / n8n_chat_histories).
+create table if not exists public.chat_turns (
+  id         bigint generated always as identity primary key,
+  session_id text not null,
+  role       text not null check (role in ('user', 'assistant')),
+  content    text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists chat_turns_session_idx on public.chat_turns (session_id, id desc);
 
 -- ---------------------------------------------------------------- tìm kiếm
 -- Tham số trùng tên cột: trong hàm SQL cột thắng, nên tham số luôn được gọi kèm tên hàm
@@ -280,18 +305,43 @@ stable
 set search_path = ''
 as $$ select 1 $$;
 
+-- Workflow keep-alive gọi hằng ngày: xoá cache quá hạn và lượt chat cũ hơn 30 ngày.
+create or replace function public.purge_expired()
+returns int
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_hours int;
+  v_cache int;
+  v_chat  int;
+begin
+  select case when value ~ '^[0-9]+$' then value::int else 168 end into v_hours
+  from public.app_config where key = 'cache_ttl_hours';
+  delete from public.search_cache
+  where created_at < now() - make_interval(hours => coalesce(v_hours, 168));
+  get diagnostics v_cache = row_count;
+  delete from public.chat_turns where created_at < now() - interval '30 days';
+  get diagnostics v_chat = row_count;
+  return v_cache + v_chat;
+end;
+$$;
+
 -- ---------------------------------------------------------------- bảo vệ
 -- n8n và script nối bằng chuỗi Postgres (role postgres) nên bỏ qua RLS.
 -- Bật RLS, không tạo policy ⇒ anon/authenticated qua REST API không đọc/ghi được gì.
 alter table public.books       enable row level security;
 alter table public.app_config  enable row level security;
 alter table public.rate_limits enable row level security;
+alter table public.search_cache enable row level security;
+alter table public.chat_turns   enable row level security;
 
 revoke execute on function public.hit_rate_limit(text, int, int) from public;
 revoke execute on function public.match_books_text(vector, text, int) from public;
 revoke execute on function public.match_books_image(vector, int) from public;
 revoke execute on function public.match_books_hybrid(vector, vector, text, int, int) from public;
 revoke execute on function public.keepalive() from public;
+revoke execute on function public.purge_expired() from public;
 
 do $$
 declare
@@ -299,12 +349,13 @@ declare
 begin
   foreach r in array array['anon', 'authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('revoke all on public.books, public.app_config, public.rate_limits from %I', r);
+      execute format('revoke all on public.books, public.app_config, public.rate_limits, public.search_cache, public.chat_turns from %I', r);
       execute format('revoke execute on function public.hit_rate_limit(text, int, int) from %I', r);
       execute format('revoke execute on function public.match_books_text(vector, text, int) from %I', r);
       execute format('revoke execute on function public.match_books_image(vector, int) from %I', r);
       execute format('revoke execute on function public.match_books_hybrid(vector, vector, text, int, int) from %I', r);
       execute format('revoke execute on function public.keepalive() from %I', r);
+      execute format('revoke execute on function public.purge_expired() from %I', r);
     end if;
   end loop;
 end;

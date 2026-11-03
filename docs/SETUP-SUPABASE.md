@@ -38,9 +38,10 @@ Kết quả cuối: 1 project Supabase ở Singapore đã chạy `supabase/schem
    Nếu Supabase cảnh báo "RLS enabled, no policies": đúng như thiết kế. Web không gọi Supabase
    trực tiếp; chỉ n8n và script nối bằng chuỗi Postgres (role `postgres`, bỏ qua RLS).
 
-   Schema cũng chặn trước quyền của `anon`/`authenticated` trên bảng mới trong `public`, nên bảng
-   `n8n_chat_histories` (n8n tự tạo ở lần chat đầu) không bị lộ qua REST API. Sau lần chat đầu, chạy
-   lại `schema.sql` một lần để bật RLS cho bảng đó (hết cảnh báo "RLS disabled" của Supabase).
+   Schema cũng chặn trước quyền của `anon`/`authenticated` trên bảng mới trong `public`. Bảng cache
+   (`search_cache`) và lịch sử chat (`chat_turns`) được tạo sẵn, đã bật RLS.
+
+   DB đã chạy `schema.sql` bản cũ (trước 03/11/2026): chạy thêm `supabase/migrations/2026-11-03-quota.sql`.
 
 ## 4. Lấy chuỗi kết nối Session pooler
 
@@ -78,11 +79,12 @@ Bấm *Save* — n8n tự thử kết nối. Đặt tên `Supabase BiaScan` đ�
 Mọi workflow đọc bảng `app_config`. Sửa trong *Table Editor → app_config* hoặc SQL Editor:
 
 ```sql
-update app_config set value = 'gemini-2.5-flash' where key = 'chat_model';
+update app_config set value = 'gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash' where key = 'llm_models';
 update app_config set value = '20' where key = 'rate_limit_per_min';
 ```
 
-- `chat_model`, `ocr_model`, `top_k`, `rerank_k`, `rate_limit_*`: đổi xong có hiệu lực ngay.
+- `llm_models` (chuỗi model dự phòng, tối đa 3), `top_k`, `chat_k`, `cache_ttl_hours`, `rate_limit_*`: đổi xong có
+  hiệu lực ngay. Đổi model mà muốn bỏ kết quả cũ thì `delete from search_cache;`.
 - `embed_model`, `embed_dims`, `desc_max_chars`: đổi là **vector cũ không còn so được** — phải
   ingest lại toàn bộ; `embed_dims` khác 768 còn phải sửa `vector(768)` trong schema.
   Nhớ sửa luôn biến tương ứng trong `ingest/.env`, `eval/.env`.
@@ -112,4 +114,5 @@ Free cho **500 MB** database; vượt thì project chuyển chỉ-đọc. Ước
   `select pg_size_pretty(pg_database_size(current_database()));`
 - Nạp ảnh bìa (phase 2) cho toàn bộ sẽ không đủ chỗ ở gói free. Phương án: chỉ nạp ảnh cho
   một phần sách, hoặc giảm `embed_dims` (vd 512) cho ảnh — cần sửa schema và CONTRACT trước.
-- `n8n_chat_histories` lớn dần theo số phiên chat; định kỳ xoá phiên cũ nếu dung lượng căng.
+- `chat_turns` và `search_cache` được `purge_expired()` (workflow keep-alive) dọn hằng ngày: lượt chat > 30 ngày,
+  cache quá `cache_ttl_hours`.
