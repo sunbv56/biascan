@@ -48,7 +48,7 @@ Boost: `similarity(title_norm, query_norm) >= 0.6` cộng vào score (text) đ�
 ### Bảng phụ
 
 - `app_config(key text primary key, value text, note text)` — seed:
-  `chat_model=gemini-flash-latest`, `ocr_model=gemini-flash-latest`,
+  `chat_model=gemini-2.5-flash`, `ocr_model=gemini-2.5-flash`,
   `embed_model=gemini-embedding-2`, `embed_dims=768`, `top_k=10`, `rerank_k=3`,
   `desc_max_chars=2000`, `rate_limit_per_min=10`, `rate_limit_per_day=200`.
 - `rate_limits(ip text, window_start timestamptz, count int, primary key(ip, window_start))`
@@ -111,6 +111,6 @@ Response 200: `{ "reply": "markdown", "suggestions": ["câu gợi ý tiếp", ..
 ## Biến môi trường
 
 - `ingest/.env`, `eval/.env`: `GEMINI_API_KEY`, `DATABASE_URL` (Supabase session pooler),
-  `EMBED_MODEL=gemini-embedding-2`, `EMBED_DIMS=768`, `OCR_MODEL=gemini-flash-latest`,
+  `EMBED_MODEL=gemini-embedding-2`, `EMBED_DIMS=768`, `OCR_MODEL=gemini-2.5-flash`,
   `N8N_BASE_URL`, `BIASCAN_TOKEN`.
 - `web/.env.local`: `NEXT_PUBLIC_N8N_BASE_URL`, `NEXT_PUBLIC_BIASCAN_TOKEN`.

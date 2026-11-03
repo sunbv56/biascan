@@ -1,12 +1,12 @@
 # Cài đặt n8n cho BiaScan
 
-Ba workflow trong `n8n/` chạy toàn bộ luồng runtime trên `https://n8n.thuanbt.id.vn`:
+Một workflow duy nhất `n8n/biascan.json` (tên "BiaScan") chạy toàn bộ luồng runtime trên `https://n8n.thuanbt.id.vn`, gồm 3 nhánh:
 
 | File | Webhook / lịch | Việc |
 |---|---|---|
-| `biascan-search.json` | `POST /webhook/biascan-search` | token → rate limit → OCR bìa → embed → `match_books_text` / `match_books_hybrid` → Gemini rerank |
-| `biascan-chat.json` | `POST /webhook/biascan-chat` | token → rate limit → AI Agent (Gemini + Postgres Chat Memory + tool `tim_sach`) |
-| `biascan-keepalive.json` | mỗi ngày 03:17 | `select public.keepalive()` để Supabase free không bị pause |
+| tìm sách | `POST /webhook/biascan-search` | token → rate limit → OCR bìa → embed → `match_books_text` / `match_books_hybrid` → Gemini rerank |
+| chat | `POST /webhook/biascan-chat` | token → rate limit → AI Agent (Gemini + Postgres Chat Memory + tool `tim_sach`) |
+| keep-alive | mỗi ngày 03:17 | `select public.keepalive()` để Supabase free không bị pause |
 
 Yêu cầu: n8n self-hosted bản community **1.100 trở lên** (đã thử import và chạy trên 1.123.5 và 2.41.6).
 Không dùng Variables (`$vars`) nên không cần bản trả phí. Trước khi làm, Supabase phải chạy xong
@@ -76,7 +76,7 @@ Dùng cho node **Gemini Chat Model** của AI Agent.
 | Host | `https://generativelanguage.googleapis.com` |
 | API Key | cùng Gemini API key |
 
-## 3. Import 3 workflow
+## 3. Import workflow
 
 Với mỗi file trong `n8n/`: **Workflows → Create → menu `…` → Import from File** → chọn file → **Save**.
 
@@ -123,8 +123,8 @@ trình duyệt chặn. Gọi bằng curl hay server-to-server thì không bị C
 
 ## 5. Kích hoạt
 
-- n8n 1.x: bật công tắc **Active** ở cả 3 workflow.
-- n8n 2.x: bấm **Publish** ở cả 3 workflow. Sau mỗi lần sửa phải Publish lại thì bản chạy thật mới
+- n8n 1.x: bật công tắc **Active** ở workflow BiaScan.
+- n8n 2.x: bấm **Publish** ở workflow BiaScan. Sau mỗi lần sửa phải Publish lại thì bản chạy thật mới
   đổi.
 
 URL thật là `/webhook/...`. URL `/webhook-test/...` chỉ chạy khi đang bấm "Listen for test event" trong editor.
@@ -207,3 +207,11 @@ n8n kết nối bằng role `postgres`, là chủ bảng nên vẫn đọc/ghi b
 - **Ảnh không có chữ đọc được** (và không kèm `query`): trả `400 bad_request` kèm lời nhắc chụp lại,
   không gọi embed. Kể cả khi `image_search_enabled=true`, workflow chưa tìm bằng riêng ảnh.
 - Sửa JSON bằng tay thì giữ nguyên tên node: các node Code tham chiếu nhau bằng `$('Tên node')`.
+
+## Lưu ý với n8n 1.123 (đã gặp khi cài thật)
+
+- Biểu thức (không phải node Code) dùng `$node['Tên node'].json…`; `$('Tên node').first()` báo
+  `#<Object> could not be cloned` trên instance này. Trong node Code thì `$('…')` vẫn chạy.
+- Query Parameters của node Postgres viết dạng `{{ a }},{{ b }}` (không dùng `{{ [a, b] }}`).
+- Tên node tránh ký tự `&`.
+- `gemini-flash-latest` hay bị 503 quá tải; `app_config` mặc định `gemini-2.5-flash`.
