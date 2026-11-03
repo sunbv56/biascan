@@ -1,0 +1,89 @@
+{
+  "name": "BiaScan — keep-alive Supabase",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 3,
+              "triggerAtMinute": 17
+            }
+          ]
+        }
+      },
+      "id": "1222ec5d-0c6f-5b8e-9753-4da13154f175",
+      "name": "Mỗi ngày",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select 1 as ok;",
+        "options": {}
+      },
+      "id": "f437c3fe-7a4c-57d3-a996-7a52b894627c",
+      "name": "Postgres select 1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Keep-alive\nSupabase free tự pause project sau 7 ngày không hoạt động. Workflow chạy `select 1` lúc 03:17 mỗi ngày (theo timezone của n8n).",
+        "height": 180,
+        "width": 420,
+        "color": 7
+      },
+      "id": "adc23a34-1139-5abf-b275-0512489ae411",
+      "name": "Ghi chú",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -220
+      ]
+    }
+  ],
+  "connections": {
+    "Mỗi ngày": {
+      "main": [
+        [
+          {
+            "node": "Postgres select 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "2d21a1c7-356f-57bf-91f9-ee850afde356",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

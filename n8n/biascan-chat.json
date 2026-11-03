@@ -1,0 +1,996 @@
+{
+  "name": "BiaScan — chat tư vấn",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "biascan-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://biascan.vercel.app,http://localhost:3000"
+        }
+      },
+      "id": "42e52f7d-bf58-53b4-85b4-a0bb8c3cdb32",
+      "name": "Webhook chat",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "16419ae7-13eb-51f7-9e23-d136bc515c3b"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_object_agg(key, value), '{}'::json) as cfg from public.app_config;",
+        "options": {}
+      },
+      "id": "7cd9c4fe-f09b-5257-b419-b8509be3f931",
+      "name": "Tải app_config",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Webhook chat').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nconst message = typeof body.message === 'string' ? body.message.trim() : '';\nlet context_ids = [];\nlet input_error = '';\n\nif (!session_id) input_error = 'Thiếu session_id.';\nelse if (session_id.length > 200) input_error = 'session_id quá dài.';\nelse if (!message) input_error = 'Thiếu message.';\nelse if (message.length > 2000) input_error = 'Tin nhắn quá dài (tối đa 2000 ký tự).';\nelse if (body.context_ids !== undefined && body.context_ids !== null) {\n  if (!Array.isArray(body.context_ids) || body.context_ids.some((id) => typeof id !== 'string')) {\n    input_error = 'context_ids phải là mảng chuỗi.';\n  } else {\n    context_ids = [...new Set(body.context_ids.map((id) => id.trim()).filter(Boolean))].slice(0, 20);\n  }\n}\n\nreturn [{\n  json: {\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    session_id,\n    message,\n    context_ids,\n    cfg: {\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n    },\n  },\n}];\n"
+      },
+      "id": "856759d0-0e02-549a-8c2c-6b42c959ed36",
+      "name": "Kiểm tra token & đầu vào",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1953dcc1-c9c0-5298-8c57-1a09158f7058",
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "328c60ee-e238-593e-a947-f34e86c02338",
+      "name": "Token hợp lệ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select public.hit_rate_limit($1, $2::int, $3::int) as limited;",
+        "options": {
+          "queryReplacement": "={{ [ $('Kiểm tra token & đầu vào').first().json.ip, $('Kiểm tra token & đầu vào').first().json.cfg.per_min, $('Kiểm tra token & đầu vào').first().json.cfg.per_day ] }}"
+        }
+      },
+      "id": "da0d7cac-f6a7-528c-8191-0fe13401f86c",
+      "name": "Đếm rate limit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "712b8b73-20a1-5090-910a-2741c8f5ea48",
+              "leftValue": "={{ $json.limited === true || $json.limited === 't' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "c3e57350-7fe8-59fd-b935-2119d7280931",
+      "name": "Vượt giới hạn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3682d0fd-77e3-576f-8312-9fef1bd64e57",
+              "leftValue": "={{ $('Kiểm tra token & đầu vào').first().json.input_error === '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "87476c93-cbeb-5fb3-b867-cfbbdb040bd7",
+      "name": "Đầu vào hợp lệ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Kiểm tra token & đầu vào').first().json.auth_message } }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "3168ef88-b329-5235-b7c3-5cebf236292b",
+      "name": "Trả 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        880,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'rate_limited', message: 'Bạn gửi quá nhiều yêu cầu, vui lòng thử lại sau ít phút.' } }) }}",
+        "options": {
+          "responseCode": 429
+        }
+      },
+      "id": "b1888b52-7016-5748-8e30-87b68ad9f1cb",
+      "name": "Trả 429",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1320,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Kiểm tra token & đầu vào').first().json.input_error } }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "ee5d1212-f908-5963-8c07-7883693b5f24",
+      "name": "Trả 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1540,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'upstream', message: 'Dịch vụ phía sau (Gemini hoặc cơ sở dữ liệu) đang lỗi, vui lòng thử lại sau.' } }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "de86bffe-558d-5698-8288-522fb1bf66cf",
+      "name": "Trả 502",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1540,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_agg(json_build_object(\n  'image_id', b.image_id, 'title', b.title, 'author', b.author, 'publisher', b.publisher\n) order by x.ord), '[]'::json) as books\nfrom jsonb_array_elements_text($1::jsonb) with ordinality as x(id, ord)\njoin public.books b on b.image_id = x.id;",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($('Kiểm tra token & đầu vào').first().json.context_ids) ] }}"
+        }
+      },
+      "id": "6ec6a9cf-9c8f-53bd-afb7-c938e9684446",
+      "name": "Sách đang xem",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1540,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Kiểm tra token & đầu vào').first().json;\nlet books = $input.first().json.books;\nif (typeof books === 'string') books = JSON.parse(books);\nif (!Array.isArray(books)) books = [];\n\nconst lines = books.map((b) => `- [${b.image_id}] ${b.title}${b.author ? ` — ${b.author}` : ''}${b.publisher ? ` (${b.publisher})` : ''}`);\nconst chat_input = lines.length\n  ? `Sách khách đang xem trên trang:\\n${lines.join('\\n')}\\n\\nTin nhắn của khách: ${ctx.message}`\n  : ctx.message;\n\nreturn [{\n  json: {\n    session_id: ctx.session_id,\n    chat_model: ctx.cfg.chat_model,\n    chat_input,\n  },\n}];\n"
+      },
+      "id": "8c129488-a200-5c7c-b185-dd00f3240de6",
+      "name": "Chuẩn bị prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chat_input }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Bạn là tư vấn viên của nhà sách BiaScan (kho dữ liệu lấy từ Fahasa). Trả lời bằng tiếng Việt, thân thiện, ngắn gọn.\n\nQuy tắc bắt buộc:\n1. Chỉ giới thiệu những cuốn sách có trong kết quả của công cụ tim_sach hoặc trong danh sách \"Sách khách đang xem\". Không nhắc tới bất kỳ cuốn nào khác, kể cả sách nổi tiếng bạn biết.\n2. Khi khách muốn tìm hoặc xin gợi ý sách, luôn gọi tim_sach trước khi trả lời, với query mô tả nhu cầu của khách (chủ đề, thể loại, độ tuổi, tên sách / tác giả nếu khách nêu). Có thể gọi thêm lần nữa với cách diễn đạt khác nếu kết quả chưa hợp.\n3. Dẫn đúng tên sách và tác giả như công cụ trả về, không sửa, không dịch.\n4. Không nêu giá, khuyến mãi, tồn kho hay phí giao hàng vì dữ liệu không có. Khách hỏi giá thì mời bấm vào thẻ sách để xem trên Fahasa.\n5. Không bịa nội dung sách; chỉ tóm tắt dựa trên mô tả công cụ trả về. Không có cuốn nào phù hợp thì nói thật và mời khách mô tả rõ hơn.\n6. Câu hỏi không liên quan tới sách: từ chối lịch sự và quay lại chủ đề sách.\n\nĐầu ra:\n- reply: câu trả lời dạng markdown, tối đa khoảng 150 từ, in đậm tên sách.\n- suggestions: 2–3 câu khách có thể hỏi tiếp, mỗi câu dưới 12 từ, viết như lời của khách.\n- products: các cuốn được nhắc trong reply (tối đa 4), mỗi phần tử gồm image_id lấy đúng từ kết quả công cụ hoặc danh sách sách đang xem, và title. Không giới thiệu cuốn nào thì để mảng rỗng.",
+          "maxIterations": 6
+        }
+      },
+      "id": "9ad5b1d7-0cde-5b19-b561-be4719e6bf72",
+      "name": "Tư vấn viên AI",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "={{ 'models/' + ($json.chat_model || 'gemini-flash-latest') }}",
+        "options": {
+          "temperature": 0.4,
+          "maxOutputTokens": 2048
+        }
+      },
+      "id": "3fda18cc-018d-50ca-a42a-361f96d1090f",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1840,
+        360
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "biascanGeminiPalm",
+          "name": "BiaScan Gemini (PaLM)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.session_id }}",
+        "tableName": "n8n_chat_histories",
+        "contextWindowLength": 10
+      },
+      "id": "7b3044b7-2468-5e85-876c-e1cb2edd9425",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        2000,
+        360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Tìm sách trong kho BiaScan (33.531 sách Fahasa) theo mô tả tự nhiên. Trả về danh sách books gồm image_id, title, author, publisher, supplier, description, score. Dùng mỗi khi cần giới thiệu hoặc kiểm tra một cuốn sách.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ $fromAI('query', 'Mô tả ngắn bằng tiếng Việt về sách cần tìm: chủ đề, thể loại, đối tượng, tên sách hoặc tác giả nếu khách nêu', 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "e6272bf6-bd99-55d7-83d1-69b3b155501e",
+      "name": "tim_sach",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"reply\": {\n      \"type\": \"string\",\n      \"description\": \"Câu trả lời markdown tiếng Việt\"\n    },\n    \"suggestions\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"description\": \"2-3 câu hỏi tiếp theo gợi ý cho khách\"\n    },\n    \"products\": {\n      \"type\": \"array\",\n      \"description\": \"Sách được nhắc trong reply, image_id lấy từ kết quả tim_sach\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"image_id\": {\n            \"type\": \"string\"\n          },\n          \"title\": {\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"image_id\",\n          \"title\"\n        ]\n      }\n    }\n  },\n  \"required\": [\n    \"reply\",\n    \"suggestions\",\n    \"products\"\n  ]\n}"
+      },
+      "id": "5b2ccbdc-7347-5013-a364-9ff468119dab",
+      "name": "Định dạng câu trả lời",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2320,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let out = $input.first().json.output;\nif (typeof out === 'string') {\n  try {\n    out = JSON.parse(out);\n  } catch (e) {\n    out = { reply: out };\n  }\n}\nif (out && typeof out.output === 'object' && out.output !== null) out = out.output;\nout = out || {};\n\nconst reply = typeof out.reply === 'string' && out.reply.trim()\n  ? out.reply.trim()\n  : 'Xin lỗi, mình chưa trả lời được câu này. Bạn thử hỏi lại theo cách khác nhé.';\nconst suggestions = (Array.isArray(out.suggestions) ? out.suggestions : [])\n  .filter((s) => typeof s === 'string' && s.trim())\n  .map((s) => s.trim())\n  .slice(0, 4);\nconst product_ids = [...new Set((Array.isArray(out.products) ? out.products : [])\n  .map((p) => (typeof p === 'string' ? p : p?.image_id))\n  .filter((id) => typeof id === 'string')\n  .map((id) => id.trim().replace(/^\\[|\\]$/g, ''))\n  .filter((id) => /^[\\w.-]{1,64}$/.test(id)))].slice(0, 6);\n\nreturn [{ json: { reply, suggestions, product_ids } }];\n"
+      },
+      "id": "076900b2-8c46-56a0-abc1-aca14650b6f9",
+      "name": "Đọc câu trả lời",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_agg(json_build_object(\n  'image_id', b.image_id, 'title', b.title, 'author', b.author, 'publisher', b.publisher,\n  'supplier', b.supplier, 'image_url', b.image_url, 'product_url', b.product_url\n) order by x.ord), '[]'::json) as products\nfrom jsonb_array_elements_text($1::jsonb) with ordinality as x(id, ord)\njoin public.books b on b.image_id = x.id;",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($json.product_ids) ] }}"
+        }
+      },
+      "id": "bb6d36b4-ccd4-5b94-ab0d-4ecad15b3c9c",
+      "name": "Lấy thẻ sách",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2640,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { reply, suggestions } = $('Đọc câu trả lời').first().json;\nlet products = $input.first().json.products;\nif (typeof products === 'string') products = JSON.parse(products);\nif (!Array.isArray(products)) products = [];\n\nconst s = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));\nreturn [{\n  json: {\n    reply,\n    suggestions,\n    products: products.map((p) => ({\n      image_id: s(p.image_id),\n      title: s(p.title),\n      author: s(p.author),\n      publisher: s(p.publisher),\n      supplier: s(p.supplier),\n      image_url: s(p.image_url),\n      product_url: s(p.product_url),\n    })),\n  },\n}];\n"
+      },
+      "id": "bd26924b-128f-5986-ac27-eb0d13705ca7",
+      "name": "Ghép phản hồi chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "4640175e-7f6b-591e-9470-157f932cc6f9",
+      "name": "Trả kết quả",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        3080,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "query",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "09aa9dd6-7222-52d5-ad1f-bba069067b19",
+      "name": "Khi agent gọi tim_sach",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_object_agg(key, value), '{}'::json) as cfg from public.app_config;",
+        "options": {}
+      },
+      "id": "8c3b9914-3f2c-5c41-bcaa-1d5bf1c39d40",
+      "name": "Tool: tải app_config",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\nconst query = String($('Khi agent gọi tim_sach').first().json.query || '').replace(/\\s+/g, ' ').trim().slice(0, 1000);\nif (!query) throw new Error('Công cụ tim_sach cần tham số query (mô tả sách cần tìm).');\n\nconst norm = (s) => String(s || '')\n  .replace(/đ/g, 'd').replace(/Đ/g, 'D')\n  .normalize('NFD').replace(/\\p{Mn}/gu, '').normalize('NFC')\n  .toLowerCase().replace(/\\s+/g, ' ').trim();\n\nconst embed_model = String(cfg.embed_model || 'gemini-embedding-2').trim();\nconst embed_dims = posInt(cfg.embed_dims, 768);\nconst request = { content: { parts: [{ text: query }] }, outputDimensionality: embed_dims };\nif (!embed_model.startsWith('gemini-embedding-2')) request.taskType = 'RETRIEVAL_QUERY';\n\nreturn [{\n  json: {\n    query,\n    query_norm: norm(query),\n    embed_model,\n    embed_dims,\n    top_k: Math.min(posInt(cfg.top_k, 10), 20),\n    embed_request: request,\n  },\n}];\n"
+      },
+      "id": "8b6bbc4b-ba1e-5047-9df1-3f97be47dcd3",
+      "name": "Tool: chuẩn bị embed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.embed_model }}:embedContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.embed_request) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "0b07671d-68c5-51bc-b608-a9d87814e872",
+      "name": "Tool: Gemini embed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        800
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "biascanGeminiKey",
+          "name": "BiaScan Gemini"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const { embed_request, ...ctx } = $('Tool: chuẩn bị embed').first().json;\nconst values = $input.first().json.embedding?.values;\nif (!Array.isArray(values) || values.length !== ctx.embed_dims) {\n  throw new Error(`Embedding sai số chiều: ${Array.isArray(values) ? values.length : 'không có'} (cần ${ctx.embed_dims})`);\n}\nreturn [{ json: { ...ctx, text_vec: `[${values.join(',')}]` } }];\n"
+      },
+      "id": "9fd8e167-ca26-5ed7-a63c-fdce397d2f86",
+      "name": "Tool: nhận vector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_agg(r order by r.score desc), '[]'::json) as rows\nfrom public.match_books_text($1, $2, $3) r;",
+        "options": {
+          "queryReplacement": "={{ [ $json.text_vec, $json.query_norm, $json.top_k ] }}"
+        }
+      },
+      "id": "2cc722e4-4627-578c-bb03-114cd8ac403a",
+      "name": "Tool: match_books_text",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1100,
+        800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let rows = $input.first().json.rows;\nif (typeof rows === 'string') rows = JSON.parse(rows);\nif (!Array.isArray(rows)) rows = [];\nconst s = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));\n\nconst books = rows.map((r) => ({\n  image_id: s(r.image_id),\n  title: s(r.title),\n  author: s(r.author),\n  publisher: s(r.publisher),\n  supplier: s(r.supplier),\n  description: s(r.description).replace(/\\s+/g, ' ').trim().slice(0, 400),\n  score: Math.round((Number(r.score) || 0) * 1000) / 1000,\n}));\n\nreturn [{\n  json: {\n    query: $('Tool: chuẩn bị embed').first().json.query,\n    found: books.length,\n    note: books.length ? 'Chỉ giới thiệu các cuốn trong danh sách books, dẫn đúng image_id và tên.' : 'Không tìm thấy sách phù hợp trong kho.',\n    books,\n  },\n}];\n"
+      },
+      "id": "cf7cce4b-93a1-5927-945b-f093ef67144c",
+      "name": "Tool: định dạng kết quả",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## BiaScan — chat tư vấn\nPOST /webhook/biascan-chat, header `x-biascan-token`.\n\n- AI Agent + Gemini Chat (`app_config.chat_model`) + Postgres Chat Memory (`n8n_chat_histories`, key = session_id).\n- Tool `tim_sach` gọi lại CHÍNH workflow này (`$workflow.id`) ở nhánh dưới: embed → `match_books_text`.\n- Agent trả `{reply, suggestions, products[{image_id,title}]}`; thẻ sách lấy lại từ bảng `books` nên không có id/link bịa.",
+        "height": 260,
+        "width": 560,
+        "color": 7
+      },
+      "id": "8198436d-39e9-5ee9-99ce-8015a948a7bd",
+      "name": "Ghi chú",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Nhánh công cụ tim_sach\nChỉ chạy khi agent gọi tool. Workflow phải được lưu và kích hoạt (publish) để tool gọi được.",
+        "height": 140,
+        "width": 520,
+        "color": 5
+      },
+      "id": "116b5ff1-2713-54c2-9ccb-fb1cf8791dd2",
+      "name": "Ghi chú tool",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        640
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook chat": {
+      "main": [
+        [
+          {
+            "node": "Tải app_config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tải app_config": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra token & đầu vào",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra token & đầu vào": {
+      "main": [
+        [
+          {
+            "node": "Token hợp lệ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token hợp lệ?": {
+      "main": [
+        [
+          {
+            "node": "Đếm rate limit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đếm rate limit": {
+      "main": [
+        [
+          {
+            "node": "Vượt giới hạn?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vượt giới hạn?": {
+      "main": [
+        [
+          {
+            "node": "Trả 429",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Đầu vào hợp lệ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đầu vào hợp lệ?": {
+      "main": [
+        [
+          {
+            "node": "Sách đang xem",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sách đang xem": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn bị prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn bị prompt": {
+      "main": [
+        [
+          {
+            "node": "Tư vấn viên AI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tư vấn viên AI": {
+      "main": [
+        [
+          {
+            "node": "Đọc câu trả lời",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Tư vấn viên AI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Tư vấn viên AI",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tim_sach": {
+      "ai_tool": [
+        [
+          {
+            "node": "Tư vấn viên AI",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Định dạng câu trả lời": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Tư vấn viên AI",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc câu trả lời": {
+      "main": [
+        [
+          {
+            "node": "Lấy thẻ sách",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lấy thẻ sách": {
+      "main": [
+        [
+          {
+            "node": "Ghép phản hồi chat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghép phản hồi chat": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Khi agent gọi tim_sach": {
+      "main": [
+        [
+          {
+            "node": "Tool: tải app_config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: tải app_config": {
+      "main": [
+        [
+          {
+            "node": "Tool: chuẩn bị embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: chuẩn bị embed": {
+      "main": [
+        [
+          {
+            "node": "Tool: Gemini embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Gemini embed": {
+      "main": [
+        [
+          {
+            "node": "Tool: nhận vector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: nhận vector": {
+      "main": [
+        [
+          {
+            "node": "Tool: match_books_text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: match_books_text": {
+      "main": [
+        [
+          {
+            "node": "Tool: định dạng kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "557a2eb0-70a7-5846-ba87-a681bab6be1b",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

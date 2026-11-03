@@ -1,0 +1,1111 @@
+{
+  "name": "BiaScan — tìm sách",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "biascan-search",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://biascan.vercel.app,http://localhost:3000"
+        }
+      },
+      "id": "6875e5e9-70b9-5641-91c9-b6a44681ef55",
+      "name": "Webhook tìm sách",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "b4498b32-e68f-5bf2-9b4b-9a208c889c74"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_object_agg(key, value), '{}'::json) as cfg from public.app_config;",
+        "options": {}
+      },
+      "id": "cde8d988-4ead-5e90-a412-dc184b1d636e",
+      "name": "Tải app_config",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Webhook tìm sách').first().json;\nconst headers = req.headers || {};\nconst body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};\nlet cfg = $input.first().json.cfg || {};\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\n\nconst posInt = (v, d) => {\n  const n = parseInt(v, 10);\n  return Number.isFinite(n) && n > 0 ? n : d;\n};\n\nconst expected = String(cfg.biascan_token || '').trim();\nconst given = String(headers['x-biascan-token'] || '').trim();\nconst auth_ok = expected !== '' && given === expected;\nconst auth_message = expected === ''\n  ? 'Máy chủ chưa cấu hình biascan_token trong bảng app_config.'\n  : 'Thiếu hoặc sai header x-biascan-token.';\n\nconst forwarded = String(headers['x-forwarded-for'] || '').split(',')[0].trim();\nconst ip = String(headers['cf-connecting-ip'] || '').trim() || forwarded || 'unknown';\n\nconst MAX_IMAGE_BYTES = 4 * 1024 * 1024;\nconst IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];\n\nlet input_error = '';\nconst query = typeof body.query === 'string' ? body.query.replace(/\\s+/g, ' ').trim() : '';\nconst session_id = typeof body.session_id === 'string' ? body.session_id.trim() : '';\nlet image_mime = '';\nlet image_b64 = '';\n\nif (body.query !== undefined && body.query !== null && typeof body.query !== 'string') {\n  input_error = 'Trường query phải là chuỗi.';\n} else if (query.length > 1000) {\n  input_error = 'Mô tả quá dài (tối đa 1000 ký tự).';\n}\n\nif (!input_error && typeof body.image === 'string' && body.image.trim() !== '') {\n  const raw = body.image.trim();\n  const m = raw.match(/^data:([a-z0-9.+\\/-]+);base64,(.*)$/is);\n  image_mime = m ? m[1].toLowerCase() : 'image/jpeg';\n  image_b64 = (m ? m[2] : raw).replace(/\\s+/g, '');\n  if (image_mime === 'image/jpg') image_mime = 'image/jpeg';\n  const padding = image_b64.endsWith('==') ? 2 : image_b64.endsWith('=') ? 1 : 0;\n  const bytes = Math.floor((image_b64.length * 3) / 4) - padding;\n  if (!IMAGE_MIMES.includes(image_mime)) {\n    input_error = 'Định dạng ảnh không hỗ trợ (chỉ nhận JPEG, PNG, WEBP, HEIC).';\n  } else if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image_b64)) {\n    input_error = 'Ảnh không phải base64 hợp lệ.';\n  } else if (bytes > MAX_IMAGE_BYTES) {\n    input_error = 'Ảnh lớn hơn 4 MB, hãy nén lại trước khi gửi.';\n  }\n} else if (!input_error && body.image !== undefined && body.image !== null && typeof body.image !== 'string') {\n  input_error = 'Trường image phải là chuỗi data URL base64.';\n}\n\nif (!input_error && !session_id) input_error = 'Thiếu session_id.';\nelse if (!input_error && session_id.length > 200) input_error = 'session_id quá dài.';\nif (!input_error && !query && !image_b64) input_error = 'Cần ít nhất một trong hai: query hoặc image.';\n\nconst has_image = !input_error && image_b64 !== '';\n\nreturn [{\n  json: {\n    t_start: Date.now(),\n    auth_ok,\n    auth_message,\n    ip,\n    input_error,\n    query,\n    session_id,\n    has_image,\n    image_mime: has_image ? image_mime : '',\n    image_b64: has_image ? image_b64 : '',\n    cfg: {\n      ocr_model: String(cfg.ocr_model || 'gemini-flash-latest').trim(),\n      chat_model: String(cfg.chat_model || 'gemini-flash-latest').trim(),\n      embed_model: String(cfg.embed_model || 'gemini-embedding-2').trim(),\n      embed_dims: posInt(cfg.embed_dims, 768),\n      top_k: Math.min(posInt(cfg.top_k, 10), 50),\n      rerank_k: Math.min(posInt(cfg.rerank_k, 3), 10),\n      per_min: posInt(cfg.rate_limit_per_min, 10),\n      per_day: posInt(cfg.rate_limit_per_day, 200),\n      image_search_enabled: String(cfg.image_search_enabled || '').trim().toLowerCase() === 'true',\n    },\n  },\n}];\n"
+      },
+      "id": "211a7112-8700-5515-ad3a-2b0fb09463c4",
+      "name": "Kiểm tra token & đầu vào",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f5e2d411-d4e1-5677-b8ce-f638fb14a02b",
+              "leftValue": "={{ $json.auth_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "c705782a-e4fe-51d5-a03d-3a934fc65f1f",
+      "name": "Token hợp lệ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select public.hit_rate_limit($1, $2::int, $3::int) as limited;",
+        "options": {
+          "queryReplacement": "={{ [ $('Kiểm tra token & đầu vào').first().json.ip, $('Kiểm tra token & đầu vào').first().json.cfg.per_min, $('Kiểm tra token & đầu vào').first().json.cfg.per_day ] }}"
+        }
+      },
+      "id": "fe7e738b-aa04-5686-a31d-c328a4c0b224",
+      "name": "Đếm rate limit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "824698a1-617b-514f-988a-7a3a362eb8a1",
+              "leftValue": "={{ $json.limited === true || $json.limited === 't' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "b55f0452-d4c8-5e3f-b460-c4f150bf1c46",
+      "name": "Vượt giới hạn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f974896d-3a61-5ca2-a28b-5d71b066331f",
+              "leftValue": "={{ $('Kiểm tra token & đầu vào').first().json.input_error === '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "79931e07-2ab8-5c14-b90e-96d0dbec13a1",
+      "name": "Đầu vào hợp lệ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Kiểm tra token & đầu vào').first().json.auth_message } }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "1dee2f41-c6c3-5d88-af02-478f7fe18458",
+      "name": "Trả 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        880,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'rate_limited', message: 'Bạn gửi quá nhiều yêu cầu, vui lòng thử lại sau ít phút.' } }) }}",
+        "options": {
+          "responseCode": 429
+        }
+      },
+      "id": "86ef53d8-aa9d-5506-b0c4-906074b3c678",
+      "name": "Trả 429",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1320,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Kiểm tra token & đầu vào').first().json.input_error } }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "5bdb1f00-9965-5cdf-9226-d12a017c2066",
+      "name": "Trả 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1540,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'upstream', message: 'Dịch vụ phía sau (Gemini hoặc cơ sở dữ liệu) đang lỗi, vui lòng thử lại sau.' } }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "5c9d513a-f155-5ecb-ad19-1a10aa5a5c28",
+      "name": "Trả 502",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1540,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "005d9f1c-9566-542b-87ba-e298ad9d50e7",
+              "leftValue": "={{ $('Kiểm tra token & đầu vào').first().json.has_image }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "55643029-04b6-5800-b008-e19790275f12",
+      "name": "Có ảnh?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Kiểm tra token & đầu vào').first().json;\nconst prompt = [\n  'Ảnh là bìa trước của một cuốn sách, có thể bị nghiêng, mờ, lóa hoặc che một phần.',\n  'Đọc chữ trên bìa và trả về JSON với các trường:',\n  '- title: tên sách đúng nguyên văn trên bìa (giữ dấu tiếng Việt), chuỗi rỗng nếu không đọc được;',\n  '- author: tác giả / dịch giả nếu thấy, chuỗi rỗng nếu không;',\n  '- publisher: nhà xuất bản hoặc đơn vị phát hành (logo, chữ nhỏ) nếu thấy, chuỗi rỗng nếu không;',\n  '- other_text: chữ đáng chú ý khác như phụ đề, tên bộ sách, tối đa 200 ký tự.',\n  'Chỉ ghi chữ thực sự có trên ảnh, không đoán, không bịa.',\n].join('\\n');\n\nconst str = { type: 'STRING' };\nreturn [{\n  json: {\n    ...ctx,\n    t_ocr: Date.now(),\n    ocr_request: {\n      contents: [{\n        role: 'user',\n        parts: [\n          { inlineData: { mimeType: ctx.image_mime, data: ctx.image_b64 } },\n          { text: prompt },\n        ],\n      }],\n      generationConfig: {\n        temperature: 0,\n        responseMimeType: 'application/json',\n        responseSchema: {\n          type: 'OBJECT',\n          properties: { title: str, author: str, publisher: str, other_text: str },\n          required: ['title', 'author', 'publisher', 'other_text'],\n        },\n      },\n    },\n  },\n}];\n"
+      },
+      "id": "b2752295-ddde-5b84-9c80-d4157858e799",
+      "name": "Chuẩn bị OCR",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.cfg.ocr_model }}:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ocr_request) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "8a61e6fa-6fd4-5f5d-ad75-69af82839d5d",
+      "name": "Gemini OCR bìa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "biascanGeminiKey",
+          "name": "BiaScan Gemini"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { ocr_request, ...ctx } = $('Chuẩn bị OCR').first().json;\nconst parts = $input.first().json.candidates?.[0]?.content?.parts || [];\nconst text = parts.filter((p) => typeof p.text === 'string' && !p.thought).map((p) => p.text).join('');\n\nlet ocr = {};\ntry {\n  ocr = JSON.parse(text);\n} catch (e) {\n  const m = text.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    try { ocr = JSON.parse(m[0]); } catch (e2) { ocr = {}; }\n  }\n}\n\nconst clean = (v) => (typeof v === 'string' ? v.replace(/\\s+/g, ' ').trim() : '');\nconst title = clean(ocr.title);\nconst lines = [];\nif (title) lines.push(`Tên sách: ${title}`);\nif (clean(ocr.author)) lines.push(`Tác giả: ${clean(ocr.author)}`);\nif (clean(ocr.publisher)) lines.push(`Nhà xuất bản: ${clean(ocr.publisher)}`);\nif (clean(ocr.other_text)) lines.push(clean(ocr.other_text).slice(0, 200));\n\nreturn [{\n  json: {\n    ...ctx,\n    ocr_text: lines.length ? lines.join('\\n') : null,\n    ocr_title: title,\n    ocr_ms: Date.now() - ctx.t_ocr,\n  },\n}];\n"
+      },
+      "id": "25f9d0c3-6b2d-5b7d-8c77-cf38940f42e4",
+      "name": "Đọc kết quả OCR",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Kiểm tra token & đầu vào').first().json;\nreturn [{ json: { ...ctx, ocr_text: null, ocr_title: '', ocr_ms: 0 } }];\n"
+      },
+      "id": "67f783b7-005b-5b79-8daf-9b5806acd757",
+      "name": "Bỏ qua OCR",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        200
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst norm = (s) => String(s || '')\n  .replace(/đ/g, 'd').replace(/Đ/g, 'D')\n  .normalize('NFD').replace(/\\p{Mn}/gu, '').normalize('NFC')\n  .toLowerCase().replace(/\\s+/g, ' ').trim();\n\nconst query_text = [ctx.ocr_text, ctx.query].filter(Boolean).join('\\n');\nconst query_norm = norm(ctx.ocr_title || ctx.query);\nconst request = {\n  content: { parts: [{ text: query_text }] },\n  outputDimensionality: ctx.cfg.embed_dims,\n};\n// gemini-embedding-2 từ chối taskType; model cũ (gemini-embedding-001...) thì dùng RETRIEVAL_QUERY.\nif (!ctx.cfg.embed_model.startsWith('gemini-embedding-2')) request.taskType = 'RETRIEVAL_QUERY';\n\nreturn [{\n  json: {\n    ...ctx,\n    query_text,\n    query_norm,\n    do_image_embed: Boolean(ctx.has_image && ctx.cfg.image_search_enabled),\n    embed_request: request,\n    t_embed: Date.now(),\n  },\n}];\n"
+      },
+      "id": "ee56d8b8-d3f5-5da8-8422-7816c0212d4c",
+      "name": "Chuẩn bị embed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.cfg.embed_model }}:embedContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.embed_request) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "46217a30-6d5b-5450-89bc-4037b272bb90",
+      "name": "Gemini embed câu hỏi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "biascanGeminiKey",
+          "name": "BiaScan Gemini"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { embed_request, ...ctx } = $('Chuẩn bị embed').first().json;\nconst values = $input.first().json.embedding?.values;\nif (!Array.isArray(values) || values.length !== ctx.cfg.embed_dims) {\n  throw new Error(`Embedding câu hỏi sai số chiều: ${Array.isArray(values) ? values.length : 'không có'} (cần ${ctx.cfg.embed_dims})`);\n}\nconst now = Date.now();\nconst out = {\n  ...ctx,\n  text_vec: `[${values.join(',')}]`,\n  embed_ms: now - ctx.t_embed,\n  t_search: now,\n};\nif (!ctx.do_image_embed) {\n  out.image_b64 = '';\n}\nreturn [{ json: out }];\n"
+      },
+      "id": "611b007a-71d3-5b77-aef6-96ecd760f505",
+      "name": "Nhận vector câu hỏi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b36cd521-5160-5fd4-9bd8-1c4660c830ad",
+              "leftValue": "={{ $json.do_image_embed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "84d6c95e-6c41-550c-bb31-2d9b3c9ab47b",
+      "name": "Embed ảnh?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3080,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.cfg.embed_model }}:embedContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: { parts: [{ inlineData: { mimeType: $json.image_mime, data: $json.image_b64 } }] }, outputDimensionality: $json.cfg.embed_dims }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "b0794d82-5488-537e-aac3-c82a469309e1",
+      "name": "Gemini embed ảnh",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "biascanGeminiKey",
+          "name": "BiaScan Gemini"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Nhận vector câu hỏi').first().json;\nconst values = $input.first().json.embedding?.values;\nif (!Array.isArray(values) || values.length !== ctx.cfg.embed_dims) {\n  throw new Error(`Embedding ảnh sai số chiều: ${Array.isArray(values) ? values.length : 'không có'} (cần ${ctx.cfg.embed_dims})`);\n}\nconst now = Date.now();\nreturn [{\n  json: {\n    ...ctx,\n    image_b64: '',\n    image_vec: `[${values.join(',')}]`,\n    embed_ms: now - ctx.t_embed,\n    t_search: now,\n  },\n}];\n"
+      },
+      "id": "81df0a51-f6f5-5583-99a2-fb6cbac98a45",
+      "name": "Nhận vector ảnh",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_agg(r order by r.score desc), '[]'::json) as rows\nfrom public.match_books_text($1, $2, $3) r;",
+        "options": {
+          "queryReplacement": "={{ [ $('Nhận vector câu hỏi').first().json.text_vec, $('Nhận vector câu hỏi').first().json.query_norm, $('Nhận vector câu hỏi').first().json.cfg.top_k ] }}"
+        }
+      },
+      "id": "774064f1-a93e-5311-8c1a-25ef2f78c28e",
+      "name": "Tìm theo text",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3740,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select coalesce(json_agg(r order by r.score desc), '[]'::json) as rows\nfrom public.match_books_hybrid($1, $2, $3, $4) r;",
+        "options": {
+          "queryReplacement": "={{ [ $('Nhận vector ảnh').first().json.text_vec, $('Nhận vector ảnh').first().json.image_vec, $('Nhận vector ảnh').first().json.query_norm, $('Nhận vector ảnh').first().json.cfg.top_k ] }}"
+        }
+      },
+      "id": "ce9f2cde-365c-5f49-9d74-39e1c540afab",
+      "name": "Tìm hybrid",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3740,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "biascanSupabasePg",
+          "name": "BiaScan Supabase Postgres"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const viaImage = $('Nhận vector ảnh').isExecuted;\nconst { text_vec, image_vec, image_b64, ...ctx } = viaImage\n  ? $('Nhận vector ảnh').first().json\n  : $('Nhận vector câu hỏi').first().json;\nconst now = Date.now();\n\nlet rows = $input.first().json.rows;\nif (typeof rows === 'string') rows = JSON.parse(rows);\nif (!Array.isArray(rows)) rows = [];\n\nconst s = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v));\nconst hits = rows.map((r) => ({\n  image_id: s(r.image_id),\n  title: s(r.title),\n  author: s(r.author),\n  publisher: s(r.publisher),\n  supplier: s(r.supplier),\n  image_url: s(r.image_url),\n  product_url: s(r.product_url),\n  score: Number(r.score) || 0,\n  description: s(r.description).replace(/\\s+/g, ' ').trim(),\n})).filter((h) => h.image_id);\n\nconst rerankK = Math.min(ctx.cfg.rerank_k, hits.length);\nconst need = [ctx.query ? `Mô tả của khách: ${ctx.query}` : '', ctx.ocr_text ? `Chữ đọc được trên ảnh bìa khách chụp:\\n${ctx.ocr_text}` : '']\n  .filter(Boolean).join('\\n\\n');\nconst list = hits.map((h) => `[${h.image_id}] ${h.title} | Tác giả: ${h.author || '-'} | NXB: ${h.publisher || '-'}\\n   ${h.description.slice(0, 300)}`).join('\\n');\nconst prompt = [\n  'Bạn là chuyên viên nhà sách. Khách đang tìm sách với thông tin sau:',\n  need || '(không có mô tả)',\n  '',\n  'Danh sách ứng viên từ kho sách:',\n  list,\n  '',\n  `Chọn tối đa ${rerankK} cuốn khớp nhất với nhu cầu của khách, xếp theo mức độ khớp giảm dần.`,\n  'Nếu có chữ đọc từ ảnh bìa thì ưu tiên cuốn trùng tên sách / tác giả với chữ đó.',\n  'Mỗi cuốn kèm reason: lý do ngắn bằng tiếng Việt (tối đa 25 từ), chỉ dựa vào thông tin trong danh sách.',\n  'Chỉ dùng image_id có trong danh sách, không bịa thêm.',\n].join('\\n');\n\nreturn [{\n  json: {\n    t_start: ctx.t_start,\n    ocr_text: ctx.ocr_text,\n    top_k: ctx.cfg.top_k,\n    rerank_k: rerankK,\n    need_rerank: rerankK > 0,\n    chat_model: ctx.cfg.chat_model,\n    timings: { ocr: ctx.ocr_ms, embed: ctx.embed_ms, search: now - ctx.t_search },\n    hits: hits.map(({ description, ...card }) => card),\n    rerank_request: {\n      contents: [{ role: 'user', parts: [{ text: prompt }] }],\n      generationConfig: {\n        temperature: 0,\n        responseMimeType: 'application/json',\n        responseSchema: {\n          type: 'OBJECT',\n          properties: {\n            ranked: {\n              type: 'ARRAY',\n              items: {\n                type: 'OBJECT',\n                properties: { image_id: { type: 'STRING' }, reason: { type: 'STRING' } },\n                required: ['image_id', 'reason'],\n              },\n            },\n          },\n          required: ['ranked'],\n        },\n      },\n    },\n    t_rerank: Date.now(),\n  },\n}];\n"
+      },
+      "id": "b33b41d2-d94c-5f21-8d04-4fed0034107f",
+      "name": "Gom ứng viên",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3b090b07-35ff-5d28-9a90-daedfe54bd7f",
+              "leftValue": "={{ $json.need_rerank }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "f1665987-a789-57ff-8337-e2ea28135d65",
+      "name": "Cần rerank?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4180,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.chat_model }}:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rerank_request) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "5d11bc05-ac48-5431-a19a-964f47338770",
+      "name": "Gemini rerank",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "biascanGeminiKey",
+          "name": "BiaScan Gemini"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Gom ứng viên').first().json;\nconst now = Date.now();\nconst byId = new Map(ctx.hits.map((h) => [h.image_id, h]));\nconst order = [];\nconst reasons = new Map();\nlet rerank_ms = 0;\n\nif (ctx.need_rerank) {\n  rerank_ms = now - ctx.t_rerank;\n  const parts = $input.first().json.candidates?.[0]?.content?.parts || [];\n  const text = parts.filter((p) => typeof p.text === 'string' && !p.thought).map((p) => p.text).join('');\n  let ranked = [];\n  try {\n    const parsed = JSON.parse(text);\n    ranked = Array.isArray(parsed) ? parsed : Array.isArray(parsed.ranked) ? parsed.ranked : [];\n  } catch (e) {\n    ranked = [];\n  }\n  for (const r of ranked) {\n    const id = typeof r?.image_id === 'string' ? r.image_id.trim().replace(/^\\[|\\]$/g, '') : '';\n    if (!byId.has(id) || reasons.has(id) || order.length >= ctx.rerank_k) continue;\n    order.push(id);\n    const reason = typeof r.reason === 'string' ? r.reason.trim() : '';\n    reasons.set(id, reason || null);\n  }\n}\n\nconst picked = new Set(order);\nconst merged = [...order.map((id) => byId.get(id)), ...ctx.hits.filter((h) => !picked.has(h.image_id))];\nconst results = merged.slice(0, ctx.top_k).map((h) => ({\n  ...h,\n  score: Math.round(h.score * 10000) / 10000,\n  reason: reasons.get(h.image_id) ?? null,\n}));\n\nreturn [{\n  json: {\n    ocr_text: ctx.ocr_text,\n    results,\n    timings_ms: { ...ctx.timings, rerank: rerank_ms, total: now - ctx.t_start },\n  },\n}];\n"
+      },
+      "id": "8ca37d0c-a33e-52bb-9622-ddf2d54ed171",
+      "name": "Ghép kết quả",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        100
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "89ef5411-f290-5790-b93f-80b8a772dfeb",
+      "name": "Trả kết quả",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        4840,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## BiaScan — tìm sách\nPOST /webhook/biascan-search, header `x-biascan-token`.\n\n- Token so khớp với `app_config.biascan_token` (user tự insert, xem docs/SETUP-N8N.md).\n- Rate limit: `hit_rate_limit(ip, rate_limit_per_min, rate_limit_per_day)`.\n- Ảnh → OCR (`ocr_model`) → embed text (`embed_model`, `embed_dims`).\n- `image_search_enabled=true` → embed thêm ảnh, gọi `match_books_hybrid`; lỗi embed ảnh thì lùi về text.\n- Rerank top `rerank_k` bằng `chat_model`; rerank lỗi vẫn trả kết quả, `reason` = null.\n- Đổi CORS: Webhook → Options → Allowed Origins (không có dấu cách).",
+        "height": 300,
+        "width": 560,
+        "color": 7
+      },
+      "id": "5c2321da-f964-5720-a08b-0723e96d1d53",
+      "name": "Ghi chú",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -260
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook tìm sách": {
+      "main": [
+        [
+          {
+            "node": "Tải app_config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tải app_config": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra token & đầu vào",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra token & đầu vào": {
+      "main": [
+        [
+          {
+            "node": "Token hợp lệ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token hợp lệ?": {
+      "main": [
+        [
+          {
+            "node": "Đếm rate limit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đếm rate limit": {
+      "main": [
+        [
+          {
+            "node": "Vượt giới hạn?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vượt giới hạn?": {
+      "main": [
+        [
+          {
+            "node": "Trả 429",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Đầu vào hợp lệ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đầu vào hợp lệ?": {
+      "main": [
+        [
+          {
+            "node": "Có ảnh?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Có ảnh?": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn bị OCR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bỏ qua OCR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn bị OCR": {
+      "main": [
+        [
+          {
+            "node": "Gemini OCR bìa",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini OCR bìa": {
+      "main": [
+        [
+          {
+            "node": "Đọc kết quả OCR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc kết quả OCR": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn bị embed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bỏ qua OCR": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn bị embed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn bị embed": {
+      "main": [
+        [
+          {
+            "node": "Gemini embed câu hỏi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini embed câu hỏi": {
+      "main": [
+        [
+          {
+            "node": "Nhận vector câu hỏi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nhận vector câu hỏi": {
+      "main": [
+        [
+          {
+            "node": "Embed ảnh?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed ảnh?": {
+      "main": [
+        [
+          {
+            "node": "Gemini embed ảnh",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tìm theo text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini embed ảnh": {
+      "main": [
+        [
+          {
+            "node": "Nhận vector ảnh",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tìm theo text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nhận vector ảnh": {
+      "main": [
+        [
+          {
+            "node": "Tìm hybrid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tìm theo text": {
+      "main": [
+        [
+          {
+            "node": "Gom ứng viên",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tìm hybrid": {
+      "main": [
+        [
+          {
+            "node": "Gom ứng viên",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gom ứng viên": {
+      "main": [
+        [
+          {
+            "node": "Cần rerank?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cần rerank?": {
+      "main": [
+        [
+          {
+            "node": "Gemini rerank",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghép kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini rerank": {
+      "main": [
+        [
+          {
+            "node": "Ghép kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ghép kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghép kết quả": {
+      "main": [
+        [
+          {
+            "node": "Trả kết quả",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trả 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "78f8f533-b3de-51d9-aca0-d635b861ceb1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
