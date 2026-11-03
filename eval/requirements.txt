@@ -1,0 +1,7 @@
+google-genai>=2.34,<3
+huggingface_hub>=1.0
+numpy>=2.1
+pillow>=11
+psycopg[binary]>=3.2
+python-dotenv>=1.0
+requests>=2.32
