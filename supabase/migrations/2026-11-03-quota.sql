@@ -51,7 +51,7 @@ $$;
 
 -- ---------------------------------------------------------------- app_config
 insert into public.app_config (key, value, note) values
-  ('llm_models',      'gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash',
+  ('llm_models',      'gemini-3.5-flash-lite,gemini-3.8-flash,gemma-4-31b-it',
                       'Chuỗi model dự phòng cho OCR, chat, giải thích (tối đa 3, cách nhau dấu phẩy)'),
   ('chat_k',          '5',   'Số sách tìm theo tin nhắn đưa vào ngữ cảnh chat'),
   ('cache_ttl_hours', '168', 'Thời hạn cache search_cache (giờ)')

@@ -56,7 +56,7 @@ create table if not exists public.app_config (
 );
 
 insert into public.app_config (key, value, note) values
-  ('llm_models',         'gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash',
+  ('llm_models',         'gemini-3.5-flash-lite,gemini-3.8-flash,gemma-4-31b-it',
                          'Chuỗi model dự phòng cho OCR, chat, giải thích (tối đa 3, cách nhau dấu phẩy)'),
   ('embed_model',        'gemini-embedding-2',  'Model embedding; đổi thì phải ingest lại toàn bộ'),
   ('embed_dims',         '768',                 'Số chiều vector; phải khớp vector(768) của bảng books'),

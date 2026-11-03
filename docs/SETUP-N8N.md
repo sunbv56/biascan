@@ -48,7 +48,7 @@ Các khoá khác (`llm_models`, `embed_model`, `embed_dims`, `top_k`, `chat_k`, 
 Đổi thứ tự model dự phòng:
 
 ```sql
-update public.app_config set value = 'gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash' where key = 'llm_models';
+update public.app_config set value = 'gemini-3.5-flash-lite,gemini-3.8-flash,gemma-4-31b-it' where key = 'llm_models';
 ```
 
 ## 2. Tạo 2 credential

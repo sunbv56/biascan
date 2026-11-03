@@ -48,7 +48,7 @@ Boost: `similarity(title_norm, query_norm) >= 0.6` cộng vào score (text) đ�
 ### Bảng phụ
 
 - `app_config(key text primary key, value text, note text)` — seed:
-  `llm_models=gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash` (thứ tự dự phòng cho mọi việc
+  `llm_models=gemini-3.5-flash-lite,gemini-3.8-flash,gemma-4-31b-it` (thứ tự dự phòng cho mọi việc
   sinh chữ: OCR, chat, giải thích; model đầu lỗi 429/5xx/timeout thì thử model sau),
   `embed_model=gemini-embedding-2`, `embed_dims=768`, `top_k=10`, `chat_k=5`,
   `desc_max_chars=2000`, `rate_limit_per_min=10`, `rate_limit_per_day=200`,

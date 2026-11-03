@@ -79,7 +79,7 @@ Bấm *Save* — n8n tự thử kết nối. Đặt tên `Supabase BiaScan` đ�
 Mọi workflow đọc bảng `app_config`. Sửa trong *Table Editor → app_config* hoặc SQL Editor:
 
 ```sql
-update app_config set value = 'gemini-3.5-flash-lite,gemma-4-31b-it,gemini-3.8-flash' where key = 'llm_models';
+update app_config set value = 'gemini-3.5-flash-lite,gemini-3.8-flash,gemma-4-31b-it' where key = 'llm_models';
 update app_config set value = '20' where key = 'rate_limit_per_min';
 ```
 
