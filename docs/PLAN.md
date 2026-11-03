@@ -10,7 +10,7 @@ chứng minh năng lực AI/LLM engineering bằng số đo thật, chạy demo 
   Không nạp thêm.
 - Công bố lại kèm `embed_text` + `text_embedding` ở
   [`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950).
-- Thống kê: 937 cuốn có mô tả (trung vị 953 ký tự, dài nhất 13.907) → cắt **2.000 ký tự đầu**; 534 tác giả, 66 NXB.
+- Thống kê: 937 cuốn có mô tả (trung vị 970 ký tự, dài nhất 13.907) → cắt **2.000 ký tự đầu**; 534 tác giả, 66 NXB.
 
 ## Kiến trúc
 

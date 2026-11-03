@@ -2,7 +2,7 @@
 
 Tra cứu sách bằng **ảnh chụp bìa** hoặc **lời mô tả tự nhiên**, kèm chat tư vấn — trên kho cố định **950 đầu sách**
 Fahasa (`fahasa_0` … `fahasa_949`), công bố kèm vector embedding ở
-[`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950): 937 cuốn có mô tả (trung vị 953 ký tự),
+[`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950): 937 cuốn có mô tả (trung vị 970 ký tự),
 534 tác giả, 66 nhà xuất bản. Lấy từ 950 dòng đầu của
 [`sunbv56/vi-OCR_VQA-desc`](https://huggingface.co/datasets/sunbv56/vi-OCR_VQA-desc).
 
