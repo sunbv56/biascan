@@ -43,7 +43,7 @@ Câu hỏi (n8n, eval): `task: search result | query: {ocr_text + query}`. Ảnh
 - `match_books_hybrid(text_embedding vector(768), image_embedding vector(768), query_norm text, match_count int default 10, rrf_k int default 60)` — `image_embedding` null ⇒ chỉ dùng text.
 
 Cùng trả: `image_id, title, author, publisher, supplier, image_url, product_url, description, score float`.
-Boost: `similarity(title_norm, query_norm) >= 0.6` cộng vào score (text) để khớp tên OCR gần nguyên văn lên đầu.
+Boost: `strict_word_similarity(query_norm, title_norm) >= 0.6` cộng vào score (text) để khớp tên OCR gần nguyên văn lên đầu.
 
 ### Bảng phụ
 

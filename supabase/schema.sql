@@ -134,7 +134,8 @@ create index if not exists chat_turns_session_idx on public.chat_turns (session_
 -- Tham số trùng tên cột: trong hàm SQL cột thắng, nên tham số luôn được gọi kèm tên hàm
 -- (match_books_hybrid.text_embedding) còn cột luôn kèm alias b.
 
--- Ứng viên = top vector (HNSW) ∪ tên gần đúng (trigram). score = cosine + similarity nếu similarity ≥ 0.6.
+-- Ứng viên = top vector (HNSW) ∪ tên chứa câu hỏi (trigram). score = cosine + độ khớp từ nếu ≥ 0.6.
+-- strict_word_similarity(câu hỏi, tên): tên dài chứa trọn câu hỏi vẫn đạt 1.0 ("tap 26" thắng "tap 25").
 create or replace function public.match_books_text(
   query_embedding vector(768),
   query_norm      text,
@@ -167,8 +168,8 @@ as $$
     select b.image_id
     from public.books b
     where coalesce(match_books_text.query_norm, '') <> ''
-      and b.title_norm % match_books_text.query_norm
-    order by similarity(b.title_norm, match_books_text.query_norm) desc
+      and match_books_text.query_norm <<% b.title_norm
+    order by strict_word_similarity(match_books_text.query_norm, b.title_norm) desc
     limit 50
   ),
   cand as (
@@ -180,7 +181,7 @@ as $$
     select
       b.*,
       (1 - (b.text_embedding <=> match_books_text.query_embedding))::float as cos_sim,
-      coalesce(similarity(b.title_norm, match_books_text.query_norm), 0)::float as name_sim
+      coalesce(strict_word_similarity(match_books_text.query_norm, b.title_norm), 0)::float as name_sim
     from cand c
     join public.books b on b.image_id = c.image_id
     where b.text_embedding is not null
@@ -278,8 +279,8 @@ as $$
       b.image_id, b.title, b.author, b.publisher, b.supplier,
       b.image_url, b.product_url, b.description,
       (f.rrf + case
-         when coalesce(similarity(b.title_norm, match_books_hybrid.query_norm), 0) >= 0.6
-         then similarity(b.title_norm, match_books_hybrid.query_norm)
+         when coalesce(strict_word_similarity(match_books_hybrid.query_norm, b.title_norm), 0) >= 0.6
+         then strict_word_similarity(match_books_hybrid.query_norm, b.title_norm)
               / (match_books_hybrid.rrf_k + 1)
          else 0 end)::float as score
     from fused f
