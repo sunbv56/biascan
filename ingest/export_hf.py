@@ -64,7 +64,7 @@ def top(counter: Counter, n: int) -> str:
 
 def card(records: list[dict], repo_id: str) -> str:
     n = len(records)
-    desc_lens = [len(r["description"]) for r in records]
+    desc_lens = [len(r["description"]) for r in records if r["description"].strip()]
     has_desc = sum(1 for r in records if r["description"].strip())
     publishers = Counter(r["publisher"].strip() for r in records)
     suppliers = Counter(r["supplier"].strip() for r in records)
