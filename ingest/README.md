@@ -98,7 +98,7 @@ Chỉ chạy khi probe cho thấy nạp hết được trong ≤ 3 ngày free.
 ```
 
 Chỉ xử lý sách đã có `text_embedding` cùng `embed_model` (cột `embed_model` dùng chung cho cả hai
-vector). Ảnh tải lỗi ghi vào `ingest/out/image_failures.jsonl` và sẽ được thử lại ở lần chạy sau.
+vector). Mỗi request tối đa 6 ảnh (`--batch` ≤ 6, giới hạn của `gemini-embedding-2`). Ảnh tải lỗi hoặc bị API từ chối (4xx) ghi vào `ingest/out/image_failures.jsonl`, không làm dừng script, và sẽ được thử lại ở lần chạy sau.
 Nếu đổi `EMBED_MODEL` rồi chạy `ingest.py`, `image_embedding` cũ bị xoá về `NULL` để không trộn hai
 không gian vector.
 
