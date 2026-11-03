@@ -27,7 +27,7 @@ def pick_description(row: dict, max_chars: int = DESC_MAX_CHARS) -> str:
 
 def build_embed_text(row: dict, max_chars: int = DESC_MAX_CHARS) -> str:
     return (
-        f"Tên sách: {_clean(row.get('title'))}\n"
+        f"title: {_clean(row.get('title')) or 'none'} | text: "
         f"Tác giả: {_clean(row.get('author'))}\n"
         f"Nhà xuất bản: {_clean(row.get('publisher'))}\n"
         f"Nhà phát hành: {_clean(row.get('supplier'))}\n"

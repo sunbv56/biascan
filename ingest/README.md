@@ -107,6 +107,9 @@ không gian vector.
 - `gemini-embedding-2` **không nhận `task_type`** (tài liệu ai.google.dev/gemini-api/docs/embeddings);
   script chỉ gửi `task_type=RETRIEVAL_DOCUMENT` khi `EMBED_MODEL` là model cũ như
   `gemini-embedding-001`.
+- Thay cho `task_type`, văn bản tài liệu có dạng `title: {title} | text: …` theo tài liệu Gemini;
+  phía truy vấn (n8n, eval) thêm `task: search result | query: …`. Đổi một bên thì phải đổi cả hai
+  và embed lại toàn bộ.
 - Mỗi văn bản/ảnh được bọc trong một `Content` riêng để nhận một embedding riêng — truyền list chuỗi
   trần cho `gemini-embedding-2` sẽ bị gộp thành một embedding.
 - `gemini-embedding-2` tự chuẩn hoá vector khi cắt chiều; script vẫn chuẩn hoá L2 lại (vô hại, và cần

@@ -76,6 +76,8 @@ class Gemini:
         return [x / norm for x in values] if norm > 0 else values
 
     def embed_text(self, text: str) -> list[float]:
+        if self.s.embed_model.startswith("gemini-embedding-2"):
+            text = f"task: search result | query: {text}"
         return self._embed(text)
 
     def embed_image(self, jpeg: bytes) -> list[float]:

@@ -183,7 +183,8 @@ n8n kết nối bằng role `postgres`, là chủ bảng nên vẫn đọc/ghi b
 
 - **Embed câu hỏi**: `gemini-embedding-2` không nhận `taskType` (theo tài liệu Gemini). Workflow chỉ
   gửi `taskType: RETRIEVAL_QUERY` khi `embed_model` không bắt đầu bằng `gemini-embedding-2`.
-  Văn bản đem embed là `ocr_text + query`, không thêm tiền tố, khớp với cách ingest embed tài liệu.
+  Văn bản đem embed là `task: search result | query: {ocr_text + query}` (tiền tố truy vấn Gemini
+  khuyên dùng, khớp với tiền tố `title: … | text: …` của ingest). Model khác thì không thêm tiền tố.
   `outputDimensionality` lấy từ `embed_dims`.
 - **query_norm** (dùng boost tên): lấy tên sách OCR được, nếu không có thì lấy `query`. Chuẩn hoá
   giống `ingest/textnorm.py`: đ→d, bỏ dấu, lowercase, gộp khoảng trắng.

@@ -22,15 +22,19 @@ Extension: `vector`, `unaccent`.
 
 Index HNSW `vector_cosine_ops` trên 2 cột vector; trigram (`pg_trgm`) trên `title_norm`.
 
-Văn bản đem embed (ingest và query phải cùng cách ghép):
+Văn bản đem embed theo định dạng tài liệu Gemini khuyên cho `gemini-embedding-2` (không có `task_type`).
+`description` rỗng thì lấy `og_description`; `title` rỗng thì ghi `none`.
+
+Tài liệu (ingest):
 
 ```
-Tên sách: {title}
-Tác giả: {author}
+title: {title} | text: Tác giả: {author}
 Nhà xuất bản: {publisher}
 Nhà phát hành: {supplier}
 Mô tả: {description[:2000]}
 ```
+
+Câu hỏi (n8n, eval): `task: search result | query: {ocr_text + query}`. Ảnh: không thêm tiền tố.
 
 ### Hàm RPC
 
