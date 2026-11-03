@@ -162,7 +162,7 @@
           "conditions": [
             {
               "id": "f974896d-3a61-5ca2-a28b-5d71b066331f",
-              "leftValue": "={{ $('Kiểm tra token và đầu vào').first().json.input_error === '' }}",
+              "leftValue": "={{ $node['Kiểm tra token và đầu vào'].json.input_error === '' }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -188,7 +188,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Kiểm tra token và đầu vào').first().json.auth_message } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $node['Kiểm tra token và đầu vào'].json.auth_message } }) }}",
         "options": {
           "responseCode": 401
         }
@@ -222,7 +222,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Kiểm tra token và đầu vào').first().json.input_error } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $node['Kiểm tra token và đầu vào'].json.input_error } }) }}",
         "options": {
           "responseCode": 400
         }
@@ -265,7 +265,7 @@
           "conditions": [
             {
               "id": "005d9f1c-9566-542b-87ba-e298ad9d50e7",
-              "leftValue": "={{ $('Kiểm tra token và đầu vào').first().json.has_image }}",
+              "leftValue": "={{ $node['Kiểm tra token và đầu vào'].json.has_image }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -551,7 +551,7 @@
         "operation": "executeQuery",
         "query": "select coalesce(json_agg(r order by r.score desc), '[]'::json) as rows\nfrom public.match_books_text($1, $2, $3) r;",
         "options": {
-          "queryReplacement": "={{ $('Nhận vector câu hỏi').first().json.text_vec }},{{ $('Nhận vector câu hỏi').first().json.query_norm }},{{ $('Nhận vector câu hỏi').first().json.cfg.top_k }}"
+          "queryReplacement": "={{ $node['Nhận vector câu hỏi'].json.text_vec }},{{ $node['Nhận vector câu hỏi'].json.query_norm }},{{ $node['Nhận vector câu hỏi'].json.cfg.top_k }}"
         }
       },
       "id": "774064f1-a93e-5311-8c1a-25ef2f78c28e",
@@ -575,7 +575,7 @@
         "operation": "executeQuery",
         "query": "select coalesce(json_agg(r order by r.score desc), '[]'::json) as rows\nfrom public.match_books_hybrid($1, $2, $3, $4) r;",
         "options": {
-          "queryReplacement": "={{ $('Nhận vector ảnh').first().json.text_vec }},{{ $('Nhận vector ảnh').first().json.image_vec }},{{ $('Nhận vector ảnh').first().json.query_norm }},{{ $('Nhận vector ảnh').first().json.cfg.top_k }}"
+          "queryReplacement": "={{ $node['Nhận vector ảnh'].json.text_vec }},{{ $node['Nhận vector ảnh'].json.image_vec }},{{ $node['Nhận vector ảnh'].json.query_norm }},{{ $node['Nhận vector ảnh'].json.cfg.top_k }}"
         }
       },
       "id": "ce9f2cde-365c-5f49-9d74-39e1c540afab",
@@ -879,7 +879,7 @@
           "conditions": [
             {
               "id": "3682d0fd-77e3-576f-8312-9fef1bd64e57",
-              "leftValue": "={{ $('Chat: Kiểm tra token và đầu vào').first().json.input_error === '' }}",
+              "leftValue": "={{ $node['Chat: Kiểm tra token và đầu vào'].json.input_error === '' }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -905,7 +905,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $('Chat: Kiểm tra token và đầu vào').first().json.auth_message } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'unauthorized', message: $node['Chat: Kiểm tra token và đầu vào'].json.auth_message } }) }}",
         "options": {
           "responseCode": 401
         }
@@ -939,7 +939,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $('Chat: Kiểm tra token và đầu vào').first().json.input_error } }) }}",
+        "responseBody": "={{ JSON.stringify({ error: { code: 'bad_request', message: $node['Chat: Kiểm tra token và đầu vào'].json.input_error } }) }}",
         "options": {
           "responseCode": 400
         }
@@ -975,7 +975,7 @@
         "operation": "executeQuery",
         "query": "select coalesce(json_agg(json_build_object(\n  'image_id', b.image_id, 'title', b.title, 'author', b.author, 'publisher', b.publisher\n) order by x.ord), '[]'::json) as books\nfrom jsonb_array_elements_text($1::jsonb) with ordinality as x(id, ord)\njoin public.books b on b.image_id = x.id;",
         "options": {
-          "queryReplacement": "={{ JSON.stringify($('Chat: Kiểm tra token và đầu vào').first().json.context_ids) }}"
+          "queryReplacement": "={{ JSON.stringify($node['Chat: Kiểm tra token và đầu vào'].json.context_ids) }}"
         }
       },
       "id": "6ec6a9cf-9c8f-53bd-afb7-c938e9684446",
