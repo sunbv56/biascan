@@ -35,6 +35,7 @@ create index if not exists books_title_norm_trgm
 create or replace function public.books_touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at := now();
@@ -276,6 +277,7 @@ create or replace function public.keepalive()
 returns int
 language sql
 stable
+set search_path = ''
 as $$ select 1 $$;
 
 -- ---------------------------------------------------------------- bảo vệ
@@ -305,5 +307,27 @@ begin
       execute format('revoke execute on function public.keepalive() from %I', r);
     end if;
   end loop;
+end;
+$$;
+
+-- Supabase mặc định cấp quyền cho anon/authenticated trên mọi bảng/hàm role postgres tạo sau này
+-- trong public. n8n tự tạo n8n_chat_histories (lịch sử chat) bằng role postgres ⇒ chặn trước.
+do $$
+declare
+  r text;
+begin
+  foreach r in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('alter default privileges in schema public revoke all on tables from %I', r);
+      execute format('alter default privileges in schema public revoke all on sequences from %I', r);
+      execute format('alter default privileges in schema public revoke all on functions from %I', r);
+      if to_regclass('public.n8n_chat_histories') is not null then
+        execute format('revoke all on public.n8n_chat_histories from %I', r);
+      end if;
+    end if;
+  end loop;
+  if to_regclass('public.n8n_chat_histories') is not null then
+    alter table public.n8n_chat_histories enable row level security;
+  end if;
 end;
 $$;

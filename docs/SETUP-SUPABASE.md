@@ -38,6 +38,10 @@ Kết quả cuối: 1 project Supabase ở Singapore đã chạy `supabase/schem
    Nếu Supabase cảnh báo "RLS enabled, no policies": đúng như thiết kế. Web không gọi Supabase
    trực tiếp; chỉ n8n và script nối bằng chuỗi Postgres (role `postgres`, bỏ qua RLS).
 
+   Schema cũng chặn trước quyền của `anon`/`authenticated` trên bảng mới trong `public`, nên bảng
+   `n8n_chat_histories` (n8n tự tạo ở lần chat đầu) không bị lộ qua REST API. Sau lần chat đầu, chạy
+   lại `schema.sql` một lần để bật RLS cho bảng đó (hết cảnh báo "RLS disabled" của Supabase).
+
 ## 4. Lấy chuỗi kết nối Session pooler
 
 1. Bấm nút **Connect** ở thanh trên cùng của project.
@@ -47,7 +51,7 @@ Kết quả cuối: 1 project Supabase ở Singapore đã chạy `supabase/schem
 3. Chuỗi có dạng:
 
    ```
-   postgresql://postgres.<project-ref>:<PASSWORD>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+   postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
    ```
 
    Thay `[YOUR-PASSWORD]` bằng mật khẩu ở bước 2 rồi điền vào `DATABASE_URL` của
