@@ -1,0 +1,14 @@
+[
+  {
+    "date": "2026-11-03",
+    "genre": "editorial",
+    "macrostructure": "Map / Diagram",
+    "theme": "Almanac",
+    "theme_axes": "light / roman-serif / warm",
+    "nav": "N1a",
+    "footer": "Ft4",
+    "enrichment": "none (sơ đồ luồng là hình)",
+    "fonts": "Newsreader + Be Vietnam Pro + JetBrains Mono (đều có subset vietnamese)",
+    "brief": "BiaScan · tra sách bằng ảnh bìa/mô tả, portfolio AI"
+  }
+]

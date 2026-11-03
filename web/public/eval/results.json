@@ -1,0 +1,83 @@
+{
+  "status": "placeholder",
+  "generated_at": null,
+  "n_books": 33531,
+  "models": {
+    "ocr": "gemini-flash-latest",
+    "embed": "gemini-embedding-2",
+    "rerank": "gemini-flash-latest"
+  },
+  "runs": [
+    {
+      "set": "image_aug",
+      "mode": "text",
+      "n": 300,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    },
+    {
+      "set": "image_aug",
+      "mode": "image",
+      "n": 300,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    },
+    {
+      "set": "image_aug",
+      "mode": "hybrid",
+      "n": 300,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    },
+    {
+      "set": "text_query",
+      "mode": "text",
+      "n": 100,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    },
+    {
+      "set": "real_photo",
+      "mode": "text",
+      "n": 20,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    },
+    {
+      "set": "real_photo",
+      "mode": "image",
+      "n": 20,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    },
+    {
+      "set": "real_photo",
+      "mode": "hybrid",
+      "n": 20,
+      "recall_at_1": null,
+      "recall_at_10": null,
+      "mrr": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null
+    }
+  ],
+  "examples": []
+}
