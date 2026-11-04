@@ -96,8 +96,9 @@ tags:
 Kho {n} đầu sách tiếng Việt kèm vector embedding dùng cho app tra cứu sách bằng ảnh bìa / mô tả
 **[BiaScan]({APP_URL})** ([mã nguồn]({REPO_URL})).
 
-Lấy {n} dòng đầu (`{first}` … `{last}`) của [`{SOURCE}`](https://huggingface.co/datasets/{SOURCE}),
-thêm cột `embed_text` (đúng chuỗi đã đem embed) và `text_embedding` ({dims} chiều, `{model}`).
+Lấy {n} sản phẩm khác nhau đầu tiên của [`{SOURCE}`](https://huggingface.co/datasets/{SOURCE}). Dataset gốc lặp lại
+cùng một sản phẩm dưới nhiều `image_id`; ở đây mỗi link sản phẩm chỉ giữ lần xuất hiện đầu, nên `image_id` chạy từ
+`{first}` tới `{last}` nhưng không liền mạch. Thêm cột `embed_text` (đúng chuỗi đã đem embed) và `text_embedding` ({dims} chiều, `{model}`).
 Dùng lại vector để tìm kiếm ngữ nghĩa mà không phải gọi API embedding.
 
 ## Thống kê

@@ -41,6 +41,9 @@ select image_id, title_norm, embed_model, vector_dims(text_embedding) from books
 
 ## 3. Chạy toàn bộ
 
+Kho demo là 950 sản phẩm khác nhau đầu tiên: `.venv/bin/python ingest.py --limit 950 --prune`.
+
+
 ```bash
 .venv/bin/python ingest.py --rpm 60
 ```
@@ -54,7 +57,8 @@ Các cờ chính:
 | `--count-items` | tắt | tính mỗi văn bản là 1 đơn vị RPM — bật nếu quota tính theo input chứ không theo request |
 | `--max-retries` | 8 | thử lại khi 429/5xx/lỗi mạng, backoff mũ, tôn trọng `retryDelay` của API |
 | `--force` | tắt | embed lại cả dòng đã có |
-| `--limit` | — | chỉ xử lý N sách đầu |
+| `--limit` | — | chỉ xử lý N sách đầu (tính trên sản phẩm khác nhau — dataset gốc lặp lại cùng sản phẩm dưới nhiều `image_id`, giữ lần xuất hiện đầu) |
+| `--prune` | tắt | xoá khỏi `books` mọi sách ngoài N sách đầu của `--limit`, xoá luôn `search_cache` |
 
 Hết quota trong ngày (429 có `PerDay`) → script dừng, giữ những batch đã ghi, thoát mã 2. Chạy lại
 sau khi quota reset (nửa đêm giờ Pacific).

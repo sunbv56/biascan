@@ -18,3 +18,12 @@ export function getSessionId(): string {
     return memoryId;
   }
 }
+
+export function resetSessionId(): string {
+  const id = newId();
+  memoryId = id;
+  try {
+    window.sessionStorage.setItem(KEY, id);
+  } catch {}
+  return id;
+}

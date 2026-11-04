@@ -2,7 +2,7 @@
 
 import Markdown, { type Components } from "react-markdown";
 import { safeHttpUrl } from "@/lib/format";
-import type { ChatTurn } from "./ChatDrawer";
+import type { BookCard } from "@/lib/types";
 import { BookCover } from "./BookCover";
 
 const ALLOWED = ["p", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "br", "h3", "h4", "hr", "del"];
@@ -21,23 +21,21 @@ const components: Components = {
   h2: ({ children }) => <h3>{children}</h3>,
 };
 
-export function ChatMessage({ turn }: { turn: ChatTurn }) {
-  if (turn.role === "user") {
-    return (
-      <div className="msg msg--user">
-        <span className="sr-only">Bạn: </span>
-        {turn.text}
-      </div>
-    );
-  }
-  if (turn.role === "error") {
-    return (
-      <div className="msg msg--error" role="alert">
-        <span className="msg__who">Không gửi được</span>
-        {turn.text}
-      </div>
-    );
-  }
+export function ChatError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="msg msg--error" role="alert">
+      <span className="msg__who">Trợ lý chưa trả lời được</span>
+      {message}
+      {onRetry && (
+        <button type="button" className="btn btn--text msg__retry" onClick={onRetry}>
+          Thử lại
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function ChatMessage({ text, products }: { text: string; products?: BookCard[] }) {
   return (
     <div className="msg msg--assistant">
       <span className="sr-only">Trợ lý: </span>
@@ -48,12 +46,12 @@ export function ChatMessage({ turn }: { turn: ChatTurn }) {
           unwrapDisallowed
           components={components}
         >
-          {turn.text}
+          {text}
         </Markdown>
       </div>
-      {turn.products && turn.products.length > 0 && (
+      {products && products.length > 0 && (
         <ul className="mini-cards" aria-label="Sách được nhắc tới">
-          {turn.products.map((p) => {
+          {products.map((p) => {
             const href = safeHttpUrl(p.product_url);
             return (
               <li key={p.image_id} className="mini-card">

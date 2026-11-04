@@ -49,7 +49,7 @@ export function TopResultCard({ book, rank, explain, onExplain }: TopProps) {
       <span className="top-card__rank" aria-hidden="true">
         {rank}
       </span>
-      <BookCover src={book.image_url} title={book.title} width={132} sizes="(min-width: 40rem) 132px, 96px" priority={rank === 1} className="top-card__cover" />
+      <BookCover src={book.image_url} title={book.title} width={120} sizes="120px" priority={rank === 1} className="top-card__cover" />
       <div className="top-card__body">
         <h3 className="top-card__title">
           <span className="sr-only">Hạng {rank}: </span>
@@ -76,7 +76,7 @@ export function TopResultCard({ book, rank, explain, onExplain }: TopProps) {
               <span className="sr-only"> (giải thích cùng lúc cho ba cuốn đầu)</span>
             </button>
           )}
-          <FahasaLink book={book} />
+          <FahasaLink book={book} compact />
           <span className="score" title="Điểm tương đồng từ pgvector (đã cộng điểm khớp tên)">
             điểm {formatDecimal(book.score, 2)}
           </span>

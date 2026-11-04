@@ -142,5 +142,7 @@ Thông điệp tiếng Việt.
 
 ## Kho sách
 
-Cố định **950 sách** `fahasa_0` … `fahasa_949`, công bố ở
+Cố định **950 sách** = 950 sản phẩm khác nhau đầu tiên của `sunbv56/vi-OCR_VQA-desc` (dataset gốc lặp lại cùng
+sản phẩm dưới nhiều `image_id`; giữ lần xuất hiện đầu, nên id không liền mạch: `fahasa_0` … `fahasa_1187`). Mỗi link
+sản phẩm chỉ một dòng (unique index `books_product_key_uniq`). Công bố ở
 <https://huggingface.co/datasets/sunbv56/biascan-950> (kèm `text_embedding`). Không nạp thêm.

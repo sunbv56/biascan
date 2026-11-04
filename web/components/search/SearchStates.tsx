@@ -1,24 +1,64 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { errorMessage, explain } from "@/lib/api";
 import { formatInt, formatMs } from "@/lib/format";
+import { EASE_OUT, prefersReducedMotion } from "@/lib/motion";
+import { SAMPLE_COVERS, SAMPLE_QUERIES, type SampleCover } from "@/lib/samples";
 import { getSessionId } from "@/lib/session";
 import { N_BOOKS } from "@/lib/site";
 import type { ApiErrorCode, SearchResponse } from "@/lib/types";
 import { CompactCard, TopResultCard, type ExplainStatus } from "../BookCards";
 
-export function EmptyState() {
+gsap.registerPlugin(useGSAP);
+
+interface EmptyProps {
+  disabled: boolean;
+  loadingCover: string | null;
+  onQuery: (q: string) => void;
+  onCover: (c: SampleCover) => void;
+}
+
+export function EmptyState({ disabled, loadingCover, onQuery, onCover }: EmptyProps) {
+  const samplesId = useId();
   return (
     <div className="state state--empty">
-      <p className="state__title">Chưa có lượt tìm nào.</p>
       <p className="state__body">
-        Kết quả hiện ở đây: ba cuốn khớp nhất đứng đầu, bấm “Vì sao?” để AI viết một dòng lý do cho cả ba; bảy cuốn gần giống xếp gọn bên dưới.
+        Gửi ảnh bìa hoặc vài dòng mô tả: ba cuốn khớp nhất đứng đầu, bấm “Vì sao?” để AI viết lý do. Sau đó cứ hỏi tiếp ngay ở ô dưới — trợ lý
+        dựa trên các cuốn vừa tìm để so sánh, gợi ý.
       </p>
       <ul className="state__tips">
         <li>Chụp thẳng mặt bìa, đủ sáng, để chữ tên sách rõ nhất có thể.</li>
         <li>Không có sách trong tay? Kể nội dung: “sách dạy nấu ăn chay cho người mới”.</li>
       </ul>
+      <section className="samples" aria-labelledby={samplesId}>
+        <p id={samplesId} className="field__label">
+          Bấm thử
+        </p>
+        <ul className="samples__queries">
+          {SAMPLE_QUERIES.map((q) => (
+            <li key={q}>
+              <button type="button" className="chip" onClick={() => onQuery(q)} disabled={disabled}>
+                {q}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <ul className="samples__covers" aria-label="Ảnh bìa mẫu">
+          {SAMPLE_COVERS.map((c) => (
+            <li key={c.image_id}>
+              <button type="button" className="sample-cover" onClick={() => onCover(c)} disabled={disabled} aria-busy={loadingCover === c.image_id || undefined}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- ảnh nhỏ từ CDN Fahasa, bản xuất tĩnh không tối ưu ảnh */}
+                <img src={c.image_url} alt="" className="sample-cover__img" loading="lazy" width={56} height={80} />
+                <span className="sample-cover__label">{loadingCover === c.image_id ? "Đang tải…" : c.title}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="mono-note">Ảnh mẫu là bìa gốc từ Fahasa, tải về trình duyệt rồi gửi như ảnh bạn chụp.</p>
+      </section>
     </div>
   );
 }
@@ -81,7 +121,7 @@ export function LoadingState({ hasImage, startedAt }: { hasImage: boolean; start
   );
 }
 
-const ERROR_TITLES: Record<ApiErrorCode, string> = {
+export const ERROR_TITLES: Record<ApiErrorCode, string> = {
   unauthorized: "Máy chủ không nhận token của trang.",
   rate_limited: "Tạm dừng vì gửi quá nhiều lần.",
   quota_exhausted: "Demo đã hết lượt miễn phí hôm nay.",
@@ -93,7 +133,7 @@ const ERROR_TITLES: Record<ApiErrorCode, string> = {
   invalid_response: "Máy chủ trả dữ liệu lạ.",
 };
 
-const RETRYABLE = new Set<ApiErrorCode>(["rate_limited", "upstream", "timeout", "network", "invalid_response"]);
+export const RETRYABLE = new Set<ApiErrorCode>(["rate_limited", "upstream", "timeout", "network", "invalid_response"]);
 
 export function ErrorState({ code, message, status, onRetry }: { code: ApiErrorCode; message: string; status: number; onRetry: () => void }) {
   return (
@@ -138,8 +178,8 @@ export function NoResults({ ocrText }: { ocrText: string | null }) {
 
 type ExplainState = { kind: "idle" } | { kind: "loading" } | { kind: "done"; reasons: Record<string, string> } | { kind: "error"; code: ApiErrorCode; message: string };
 
-function useExplain(query: string | null, ids: string[]) {
-  const [state, setState] = useState<ExplainState>({ kind: "idle" });
+function useExplain(query: string | null, ids: string[], saved?: Record<string, string>, onSaved?: (reasons: Record<string, string>) => void) {
+  const [state, setState] = useState<ExplainState>(saved ? { kind: "done", reasons: saved } : { kind: "idle" });
   const inflight = useRef<AbortController | null>(null);
   const idsKey = ids.join(",");
 
@@ -152,7 +192,10 @@ function useExplain(query: string | null, ids: string[]) {
     setState({ kind: "loading" });
     try {
       const res = await explain({ session_id: getSessionId(), query, image_ids: idsKey.split(",") }, controller.signal);
-      if (!controller.signal.aborted) setState({ kind: "done", reasons: res.reasons });
+      if (!controller.signal.aborted) {
+        setState({ kind: "done", reasons: res.reasons });
+        onSaved?.(res.reasons);
+      }
     } catch (err) {
       if (controller.signal.aborted) return;
       const { code, message } = errorMessage(err);
@@ -160,7 +203,7 @@ function useExplain(query: string | null, ids: string[]) {
     } finally {
       if (inflight.current === controller) inflight.current = null;
     }
-  }, [query, idsKey]);
+  }, [query, idsKey, onSaved]);
 
   return { state, run, available: Boolean(query) };
 }
@@ -171,20 +214,39 @@ function statusFor(state: ExplainState, id: string): ExplainStatus {
   return { kind: "idle" };
 }
 
-export function Results({ data, query, onAsk }: { data: SearchResponse; query: string | null; onAsk: () => void }) {
+interface ResultsProps {
+  data: SearchResponse;
+  query: string | null;
+  onAsk?: () => void;
+  savedReasons?: Record<string, string>;
+  onReasons?: (reasons: Record<string, string>) => void;
+}
+
+export function Results({ data, query, onAsk, savedReasons, onReasons }: ResultsProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const topId = useId();
+  const restId = useId();
   const top = data.results.slice(0, 3);
   const rest = data.results.slice(3);
   const t = data.timings_ms;
   const explainQuery = query || data.ocr_text;
-  const why = useExplain(explainQuery, top.map((b) => b.image_id));
+  const why = useExplain(explainQuery, top.map((b) => b.image_id), savedReasons, onReasons);
+
+  useGSAP(
+    () => {
+      if (prefersReducedMotion()) return;
+      gsap.from("[data-reveal]", { autoAlpha: 0, y: 10, duration: 0.42, ease: EASE_OUT, stagger: 0.05, clearProps: "all" });
+    },
+    { scope: rootRef },
+  );
 
   return (
-    <div className="results">
+    <div ref={rootRef} className="results">
       {data.ocr_text && <OcrBlock text={data.ocr_text} />}
 
-      <section aria-labelledby="khop-nhat" className="results__top">
+      <section aria-labelledby={topId} className="results__top">
         <div className="results__head">
-          <h2 id="khop-nhat" className="section-title">
+          <h2 id={topId} className="section-title">
             Khớp nhất
           </h2>
           <div className="results__head-side">
@@ -193,9 +255,11 @@ export function Results({ data, query, onAsk }: { data: SearchResponse; query: s
                 lấy từ bộ nhớ đệm
               </span>
             )}
-            <button type="button" className="btn btn--text" onClick={onAsk}>
-              Hỏi trợ lý về các cuốn này
-            </button>
+            {onAsk && (
+              <button type="button" className="btn btn--text" onClick={onAsk}>
+                So sánh ba cuốn này
+              </button>
+            )}
           </div>
         </div>
         <ol className="top-list">
@@ -229,11 +293,11 @@ export function Results({ data, query, onAsk }: { data: SearchResponse; query: s
       </section>
 
       {rest.length > 0 && (
-        <section aria-labelledby="gan-giong" className="results__rest">
-          <h2 id="gan-giong" className="section-title section-title--small">
+        <section aria-labelledby={restId} className="results__rest">
+          <h2 id={restId} className="section-title section-title--small">
             {rest.length} cuốn gần giống
           </h2>
-          <ul className="compact-grid">
+          <ul className="strip">
             {rest.map((b) => (
               <li key={b.image_id}>
                 <CompactCard book={b} />
@@ -244,24 +308,9 @@ export function Results({ data, query, onAsk }: { data: SearchResponse; query: s
       )}
 
       {t.total > 0 && (
-        <details className="timings">
-          <summary>Thời gian xử lý · {formatMs(t.total)}</summary>
-          <dl className="timings__list">
-            {(
-              [
-                ["OCR", t.ocr],
-                ["Nhúng", t.embed],
-                ["Tìm", t.search],
-                ["Tổng", t.total],
-              ] as const
-            ).map(([k, v]) => (
-              <div key={k}>
-                <dt>{k}</dt>
-                <dd>{formatMs(v)}</dd>
-              </div>
-            ))}
-          </dl>
-        </details>
+        <p className="timings mono-note">
+          {formatMs(t.total)} · OCR {formatMs(t.ocr)} · nhúng {formatMs(t.embed)} · tìm {formatMs(t.search)}
+        </p>
       )}
     </div>
   );

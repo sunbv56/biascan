@@ -91,7 +91,7 @@ export function PipelineMap() {
           <h3 className="node__title">Giải thích vì sao khớp</h3>
           <p className="node__tech">Gemini · một lần gọi cho 3 cuốn</p>
           <p className="node__body">Kết quả tìm không gọi model viết chữ. Bấm “Vì sao?” thì một lượt gọi viết lý do cho cả ba cuốn đầu, lưu lại cho lần sau.</p>
-          <Link className="node__link" href="/tim-kiem">
+          <Link className="node__link" href="/">
             Thử với một cuốn sách
           </Link>
         </li>

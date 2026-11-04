@@ -1,15 +1,13 @@
 # BiaScan — web
 
 Giao diện Next.js (App Router) cho BiaScan: tìm sách bằng ảnh bìa hoặc mô tả trong kho cố định 950 đầu sách
-([`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950)), drawer chat tư vấn, trang `/eval`.
+([`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950)), trợ lý tư vấn ngay trong trang tìm, trang `/eval`.
 Web không có backend riêng — mọi lời gọi đi thẳng tới webhook n8n theo `docs/CONTRACT.md`.
 
 | Trang | Nội dung |
 |---|---|
-| `/` | Giới thiệu, sơ đồ luồng OCR → embedding → pgvector → giải thích khi hỏi; số liệu kho + link dataset |
-| `/tim-kiem` | Chụp/tải ảnh bìa (nén ở trình duyệt), ô mô tả, câu/ảnh mẫu bấm là tìm; top 3 có nút “Vì sao?” (1 lần gọi `biascan-explain` cho cả 3) + 7 kết quả gọn; nhãn “lấy từ bộ nhớ đệm” khi `cached: true` |
-| `/eval` | Đọc `public/eval/results.json`; `status: "placeholder"` ⇒ hiện "chưa đo", không có số |
-| Drawer chat | Mở từ nút "Hỏi trợ lý" ở mọi trang; gửi `context_ids` = kết quả tìm gần nhất |
+| `/` | Khung hội thoại: một ô nhập chung (ảnh bìa nén ở trình duyệt + chữ). Có ảnh hoặc chưa có kết quả → tìm; đã có kết quả mà chỉ gõ chữ → hỏi trợ lý với `context_ids` = kết quả gần nhất (công tắc “Tìm mới / Hỏi tiếp”). Top 3 có nút “Vì sao?” (1 lần gọi `biascan-explain` cho cả 3) + 7 kết quả gọn; nhãn “lấy từ bộ nhớ đệm” khi `cached: true`. Tin trợ lý lỗi có “Thử lại”; “Cuộc hội thoại mới” xoá lịch sử và đổi `session_id` |
+| `/eval` | Đọc `public/eval/results.json`; `status: "placeholder"` ⇒ hiện "chưa đo", không có số. Kèm sơ đồ luồng OCR → embedding → pgvector → giải thích khi hỏi, số liệu kho + link dataset |
 
 Stack: Next.js 16, React 19, TypeScript, Tailwind CSS v4, GSAP 3 (`@gsap/react`), `react-markdown` (không render HTML thô).
 
@@ -81,12 +79,12 @@ deploy lại. Khi `status` khác `measured`, trang `/eval` bỏ qua mọi số t
 ## Cấu trúc
 
 ```
-app/            layout, trang /, /tim-kiem, /eval; tokens.css (OKLCH, font, spacing, easing) + globals.css
-components/     header, footer, sơ đồ luồng, drawer chat, thẻ sách, form/trạng thái tìm kiếm
+app/            layout, trang / (tìm sách + trợ lý), /eval; tokens.css (OKLCH, font, spacing, easing) + globals.css
+components/     header, footer, sơ đồ luồng, thẻ sách, khung hội thoại tìm kiếm (ô nhập chung, trạng thái, tin nhắn trợ lý)
 lib/api.ts      client typed theo CONTRACT (search, explain, chat): timeout 30 s, lỗi ApiError có code
 lib/image.ts    nén ảnh bằng canvas: cạnh dài ≤ 768 px, JPEG q≈0,8 (≤ 4 MB) → data URL, ít token hơn khi OCR
 lib/samples.ts  câu mẫu + 3 bìa mẫu (sách có trong kho 950 cuốn)
-lib/site.ts     link GitHub/dataset, số liệu kho (950 sách, 937 có mô tả, 534 tác giả, 66 NXB)
+lib/site.ts     link GitHub/dataset, số liệu kho (950 sách, 933 có mô tả, 661 tác giả, 71 NXB)
 lib/session.ts  session_id trong sessionStorage (fallback bộ nhớ nếu bị chặn)
 public/eval/    results.json
 .hallmark/      nhật ký thiết kế (Hallmark)
@@ -96,5 +94,5 @@ public/eval/    results.json
 
 Hallmark · editorial · macrostructure Map / Diagram · theme Almanac (giấy ấm, mực, điểm nhấn đỏ sẫm) · nav N1a · footer Ft4.
 Font: Newsreader (tiêu đề), Be Vietnam Pro (chữ thân), JetBrains Mono (dữ liệu máy) — cả ba có subset `vietnamese`.
-Chuyển động GSAP chỉ dùng transform/opacity: sơ đồ hiện lần lượt khi cuộn tới, drawer trượt vào, kết quả hiện so le;
+Chuyển động GSAP chỉ dùng transform/opacity: sơ đồ hiện lần lượt khi cuộn tới, kết quả hiện so le;
 `prefers-reduced-motion` ⇒ bỏ chuyển động không gian.
