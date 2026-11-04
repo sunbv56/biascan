@@ -85,9 +85,9 @@ export function SearchClient() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [asking, setAsking] = useState(false);
   const [loadingCover, setLoadingCover] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const inflight = useRef<AbortController | null>(null);
   const nextId = useRef(1);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const scrollTo = useRef<number | null>(null);
