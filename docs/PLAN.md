@@ -67,8 +67,23 @@ Mọi bộ chỉ lấy sách trong kho 950 cuốn (`--catalog-max 950`).
 
 ## Giao diện (`web/`)
 
-Next.js + Tailwind + GSAP, làm mới hoàn toàn theo Hallmark. Trang: landing, tìm kiếm (upload +
-ô mô tả + câu/ảnh mẫu + thẻ sản phẩm + nút “Vì sao?”), drawer chat, `/eval`. Không admin, không lead form.
+Next.js + Tailwind + GSAP, làm mới hoàn toàn theo Hallmark. Không admin, không lead form.
+
+Chỉ 2 tab (chốt 04/11/2026):
+
+- **Tìm sách** (`/`, bỏ landing và `/tim-kiem`): một khung hội thoại. Dòng thời gian xen kẽ khối kết quả tìm
+  (3 cuốn khớp nhất + “Vì sao?” + 7 cuốn gần giống) và câu trả lời trợ lý. Một ô nhập chung: đính kèm ảnh
+  (chụp/chọn/kéo thả) + chữ. Có ảnh hoặc chưa có kết quả → tìm; đã có kết quả mà chỉ có chữ → hỏi trợ lý
+  (dựa trên kết quả gần nhất); công tắc “Tìm mới / Hỏi tiếp” để đổi tay. Câu/ảnh mẫu ở trạng thái trống,
+  sau đó là câu hỏi gợi ý. Lịch sử giữ trong phiên; nút “Cuộc hội thoại mới” xoá dòng thời gian và đổi
+  `session_id` (trợ lý quên lịch sử chat cũ).
+  Bố cục (chốt 04/11/2026, bớt cuộn): máy tính chia đôi — trái là hội thoại gọn (mỗi lượt tìm chỉ một dòng tóm tắt,
+  bấm để chọn) + ô nhập, phải là bảng kết quả của lượt đang chọn; khung cao đúng màn hình, hai cột cuộn riêng.
+  Kết quả gọn: 3 cuốn đầu xếp 3 cột, 7 cuốn gần giống là lưới bìa nhỏ (7 cột khi đủ chỗ, 4 + 3 khi
+  hẹp, không cuộn ngang), thời gian xử lý một dòng.
+  Điện thoại: một cột, chỉ lượt tìm đang chọn (mặc định lượt mới nhất) bung kết quả, lượt cũ thu một dòng.
+- **Đo lường** (`/eval`): bảng số + sơ đồ luồng xử lý + thông số kho (chuyển từ landing cũ).
+- Bỏ drawer chat và nút “Hỏi trợ lý” trên header.
 
 ## Repo
 

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PipelineMap } from "@/components/PipelineMap";
 import { loadEvalResults, MODE_LABELS, SET_LABELS } from "@/lib/eval";
 import { formatDecimal, formatInt, formatMs, formatPercent } from "@/lib/format";
-import { DATASET_NAME, DATASET_URL, N_BOOKS } from "@/lib/site";
+import { DATASET_NAME, DATASET_URL, DESCRIPTION_MEDIAN_CHARS, N_AUTHORS, N_BOOKS, N_PUBLISHERS, N_WITH_DESCRIPTION } from "@/lib/site";
 import type { EvalRun, EvalSet } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -158,6 +159,51 @@ export default async function EvalPage() {
         )}
       </section>
 
+      <section className="eval-section map-section" aria-labelledby="luong-xu-ly">
+        <h2 id="luong-xu-ly" className="section-title">
+          Luồng xử lý
+        </h2>
+        <p className="map-section__lede">Ảnh → chữ → vector → 10 ứng viên → 3 cuốn. Toàn bộ chạy trên một workflow n8n, không có backend riêng; bước thứ tư chỉ chạy khi bạn hỏi.</p>
+        <PipelineMap />
+      </section>
+
+      <section className="eval-section" aria-labelledby="kho-sach">
+        <h2 id="kho-sach" className="section-title">
+          Kho sách
+        </h2>
+        <dl className="spec">
+          <div>
+            <dt>Số đầu sách</dt>
+            <dd>{formatInt(N_BOOKS)} — kho cố định, không nạp thêm</dd>
+          </div>
+          <div>
+            <dt>Dataset</dt>
+            <dd>
+              <a href={DATASET_URL} target="_blank" rel="noopener noreferrer">
+                {DATASET_NAME}
+              </a>{" "}
+              trên Hugging Face, kèm sẵn vector embedding
+            </dd>
+          </div>
+          <div>
+            <dt>Mô tả đem nhúng</dt>
+            <dd>
+              {formatInt(N_WITH_DESCRIPTION)} cuốn có mô tả, độ dài trung vị {formatInt(DESCRIPTION_MEDIAN_CHARS)} ký tự; cắt còn 2.000 ký tự đầu
+            </dd>
+          </div>
+          <div>
+            <dt>Sách không có mô tả</dt>
+            <dd>{formatInt(N_BOOKS - N_WITH_DESCRIPTION)} — chỉ tìm được qua tên, tác giả, NXB</dd>
+          </div>
+          <div>
+            <dt>Tác giả · NXB</dt>
+            <dd>
+              {formatInt(N_AUTHORS)} tác giả · {formatInt(N_PUBLISHERS)} nhà xuất bản
+            </dd>
+          </div>
+        </dl>
+      </section>
+
       <section className="eval-section" aria-labelledby="vi-du">
         <h2 id="vi-du" className="section-title">
           Ví dụ
@@ -178,7 +224,7 @@ export default async function EvalPage() {
           <div className="state state--empty">
             <p className="state__title">Chưa có ví dụ.</p>
             <p className="state__body">Ví dụ được lấy từ lượt chạy đánh giá thật, nên sẽ có cùng lúc với bảng số.</p>
-            <Link href="/tim-kiem" className="btn btn--ghost">
+            <Link href="/" className="btn btn--ghost">
               Tự thử một lượt tìm
             </Link>
           </div>

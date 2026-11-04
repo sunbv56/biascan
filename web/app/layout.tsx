@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Be_Vietnam_Pro, JetBrains_Mono, Newsreader } from "next/font/google";
-import { AppStateProvider } from "@/components/AppState";
-import { ChatDrawer } from "@/components/ChatDrawer";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
@@ -44,17 +42,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="vi" className={`${newsreader.variable} ${beVietnam.variable} ${jetbrains.variable}`}>
       <body>
-        <AppStateProvider>
-          <a href="#noi-dung" className="skip-link">
-            Bỏ qua tới nội dung
-          </a>
-          <SiteHeader />
-          <main id="noi-dung" tabIndex={-1}>
-            {children}
-          </main>
-          <SiteFooter />
-          <ChatDrawer />
-        </AppStateProvider>
+        <a href="#noi-dung" className="skip-link">
+          Bỏ qua tới nội dung
+        </a>
+        <SiteHeader />
+        <main id="noi-dung" tabIndex={-1}>
+          {children}
+        </main>
+        <SiteFooter />
       </body>
     </html>
   );
