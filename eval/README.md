@@ -16,9 +16,9 @@ Dữ liệu sách tự tải từ HF ([`sunbv56/biascan-950`](https://huggingfac
 file `data/train.parquet`, lưu cache của `huggingface_hub`); có file sẵn thì đặt `BIASCAN_DATASET=<đường dẫn .parquet
 hoặc .jsonl>`. Dữ liệu sinh ra nằm trong `eval/data/` (đã gitignore, không commit).
 
-**Chỉ đánh giá trong kho 950 sách.** DB chỉ có `fahasa_0` … `fahasa_949`, nên mọi bộ đánh giá chỉ lấy sách trong
-khoảng này: `build_sets.py` lọc sách trước khi chọn mẫu, `run_eval.py` bỏ mẫu có đáp án ngoài kho (và với `--via direct`
-bỏ thêm mẫu có đáp án không nằm trong bảng `books`). Cả hai nhận `--catalog-max N` (mặc định 950) để đổi kích thước kho.
+**Chỉ đánh giá trong kho 950 sách.** Kho là đúng các sách trong dataset `biascan-950` (950 sản phẩm khác nhau đầu tiên
+của dataset gốc, đã bỏ sản phẩm trùng nên `image_id` không liền mạch): `build_sets.py` chọn mẫu từ dataset này,
+`run_eval.py` bỏ mẫu có đáp án ngoài kho (và với `--via direct` bỏ thêm mẫu có đáp án không nằm trong bảng `books`).
 
 ## 1. Tạo bộ đánh giá — `build_sets.py`
 

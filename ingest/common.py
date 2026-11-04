@@ -66,10 +66,17 @@ def dataset_path() -> Path:
     return Path(hf_hub_download(DATASET_REPO, DATASET_FILE, repo_type="dataset"))
 
 
+def product_key(url: str | None) -> str:
+    return (url or "").split("?", 1)[0].strip()
+
+
+# Dataset gốc lặp lại cùng một sản phẩm dưới nhiều image_id (12.661 / 33.531 dòng):
+# giữ lần xuất hiện đầu tiên của mỗi link sản phẩm.
 def load_rows(path: Path | None = None) -> list[dict]:
     path = path or dataset_path()
     rows: list[dict] = []
     seen: set[str] = set()
+    seen_products: set[str] = set()
     with open(path, encoding="utf-8") as f:
         for line in f:
             if not line.strip():
@@ -79,6 +86,11 @@ def load_rows(path: Path | None = None) -> list[dict]:
             if not image_id or image_id in seen:
                 continue
             seen.add(image_id)
+            key = product_key(raw.get("product_url"))
+            if key:
+                if key in seen_products:
+                    continue
+                seen_products.add(key)
             rows.append({k: raw.get(k) for k in FIELDS})
     return rows
 

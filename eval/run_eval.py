@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import (CATALOG_MAX, DATA_DIR, DEFAULT_RESULTS, MODES, N_BOOKS, OUT_DIR, SETS, QuotaStop, Throttle,
-                    in_catalog, is_quota_exhausted_response, read_jsonl, settings, write_jsonl)
+from common import (DATA_DIR, DEFAULT_RESULTS, MODES, N_BOOKS, OUT_DIR, SETS, QuotaStop, Throttle,
+                    catalog_ids, is_quota_exhausted_response, read_jsonl, settings, write_jsonl)
 from metrics import rank_of, summarize
 from textnorm import normalize
 
@@ -30,12 +30,11 @@ class Item:
         return f"{self.expected_id}|{self.image_path.name if self.image_path else self.query}"
 
 
-def load_items(set_name: str, data_dir: Path, limit: int | None = None, catalog_max: int = CATALOG_MAX,
-               log=print) -> list[Item]:
+def load_items(set_name: str, data_dir: Path, catalog: set[str], limit: int | None = None, log=print) -> list[Item]:
     folder = data_dir / set_name
     items, skipped = [], 0
     for r in read_jsonl(folder / "manifest.jsonl"):
-        if not in_catalog(r.get("expected_id", ""), catalog_max):
+        if r.get("expected_id", "") not in catalog:
             skipped += 1
             continue
         if set_name == "text_query":
@@ -43,7 +42,7 @@ def load_items(set_name: str, data_dir: Path, limit: int | None = None, catalog_
         else:
             items.append(Item(set_name, r["expected_id"], image_path=folder / r["query_image"]))
     if skipped:
-        log(f"{set_name}: bỏ {skipped} mẫu có sách ngoài kho fahasa_0 … fahasa_{catalog_max - 1}")
+        log(f"{set_name}: bỏ {skipped} mẫu có sách ngoài kho biascan-950")
     return items[:limit] if limit else items
 
 
@@ -304,8 +303,7 @@ def main(argv=None) -> int:
     ap.add_argument("--min-interval", type=float, default=None,
                     help="giây giữa 2 request (mặc định n8n 6.5 vì rate limit 10/phút, direct 4.5 cho Gemini free)")
     ap.add_argument("--n-books", type=int, default=N_BOOKS)
-    ap.add_argument("--catalog-max", type=int, default=CATALOG_MAX,
-                    help="chỉ đánh giá sách fahasa_0 … fahasa_<N-1> (mặc định 950, đúng kho trong DB)")
+    ap.add_argument("--dataset", type=Path, help="file train.parquet/.jsonl có sẵn (mặc định tải sunbv56/biascan-950 từ HF)")
     ap.add_argument("--max-error-rate", type=float, default=0.05,
                     help="tỉ lệ truy vấn lỗi tối đa; vượt thì không ghi results.json (mặc định 0.05)")
     args = ap.parse_args(argv)
@@ -319,9 +317,10 @@ def main(argv=None) -> int:
     if bad:
         ap.error(f"giá trị không hợp lệ: {bad}")
 
+    catalog = catalog_ids(args.dataset)
     items = []
     for set_name in sets:
-        got = load_items(set_name, args.data_dir, args.limit, args.catalog_max)
+        got = load_items(set_name, args.data_dir, catalog, args.limit)
         print(f"{set_name}: {len(got)} mẫu")
         items += got
     if not items:
@@ -343,7 +342,7 @@ def main(argv=None) -> int:
         conn = psycopg.connect(s.database_url, autocommit=True, prepare_threshold=None)
         with conn.cursor() as cur:
             cur.execute("select image_id from books")
-            db_ids = {row[0] for row in cur.fetchall() if in_catalog(row[0], args.catalog_max)}
+            db_ids = {row[0] for row in cur.fetchall() if row[0] in catalog}
             n_books = len(db_ids)
             items = restrict_to(items, db_ids)
             if not items:

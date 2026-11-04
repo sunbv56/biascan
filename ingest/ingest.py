@@ -44,6 +44,7 @@ ON CONFLICT (image_id) DO UPDATE SET
 """
 
 DONE_SQL = "SELECT image_id FROM books WHERE text_embedding IS NOT NULL AND embed_model = %s"
+PRUNE_SQL = "DELETE FROM books WHERE NOT (image_id = ANY(%s))"
 
 
 def to_record(row: dict, max_chars: int) -> dict:
@@ -63,7 +64,9 @@ def to_record(row: dict, max_chars: int) -> dict:
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--limit", type=int, default=None, help="chỉ xử lý N sách đầu (chạy thử)")
+    p.add_argument("--limit", type=int, default=None, help="chỉ xử lý N sách đầu (đã bỏ sản phẩm trùng)")
+    p.add_argument("--prune", action="store_true",
+                   help="xoá khỏi books mọi sách ngoài N sách đầu (cần --limit), xoá luôn search_cache")
     p.add_argument("--batch", type=int, default=100, help="số văn bản mỗi request (tối đa 100)")
     p.add_argument("--rpm", type=int, default=60, help="giới hạn request/phút (0 = không giới hạn)")
     p.add_argument(
@@ -79,6 +82,8 @@ def parse_args(argv=None):
     args = p.parse_args(argv)
     if not 1 <= args.batch <= 100:
         p.error("--batch phải trong 1..100")
+    if args.prune and not args.limit:
+        p.error("--prune cần --limit (kích thước kho)")
     return args
 
 
@@ -116,6 +121,15 @@ def main(argv=None, *, client=None, conn=None) -> int:
     if conn is None:
         require(settings, "database_url")
         conn = connect_db(settings.database_url)
+
+    if args.prune:
+        with conn.cursor() as cur:
+            cur.execute(PRUNE_SQL, ([r["image_id"] for r in records],))
+            pruned = cur.rowcount
+            if pruned:
+                cur.execute("DELETE FROM search_cache")
+        conn.commit()
+        print(f"Đã xoá {pruned} sách ngoài kho {len(records)} cuốn" + ("; đã xoá search_cache." if pruned else "."))
 
     if not args.force:
         with conn.cursor() as cur:

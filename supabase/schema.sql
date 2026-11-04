@@ -31,6 +31,10 @@ create index if not exists books_image_embedding_hnsw
   on public.books using hnsw (image_embedding vector_cosine_ops);
 create index if not exists books_title_norm_trgm
   on public.books using gin (title_norm gin_trgm_ops);
+-- Dataset gốc lặp lại cùng sản phẩm dưới nhiều image_id: mỗi link sản phẩm (bỏ query string) chỉ một dòng.
+create unique index if not exists books_product_key_uniq
+  on public.books (split_part(product_url, '?', 1))
+  where coalesce(product_url, '') <> '';
 
 create or replace function public.books_touch_updated_at()
 returns trigger

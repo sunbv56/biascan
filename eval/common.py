@@ -1,7 +1,6 @@
 import json
 import os
 import random
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +13,6 @@ DEFAULT_RESULTS = EVAL_DIR.parent / "web" / "public" / "eval" / "results.json"
 HF_REPO = "sunbv56/biascan-950"
 HF_FILE = "data/train.parquet"
 N_BOOKS = 950
-CATALOG_MAX = 950
 SETS = ("image_aug", "text_query", "real_photo")
 MODES = ("text", "image", "hybrid")
 
@@ -65,14 +63,6 @@ def dataset_path() -> Path:
     return Path(hf_hub_download(HF_REPO, HF_FILE, repo_type="dataset"))
 
 
-_CATALOG_ID = re.compile(r"fahasa_(\d+)")
-
-
-def in_catalog(image_id: str, catalog_max: int = CATALOG_MAX) -> bool:
-    m = _CATALOG_ID.fullmatch(image_id or "")
-    return m is not None and int(m.group(1)) < catalog_max
-
-
 def _read_rows(path: Path, keep: tuple[str, ...]) -> list[dict]:
     if path.suffix == ".parquet":
         import pyarrow.parquet as pq
@@ -83,15 +73,16 @@ def _read_rows(path: Path, keep: tuple[str, ...]) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def load_books(path: Path | None = None, catalog_max: int = CATALOG_MAX) -> list[dict]:
+# Kho = đúng các sách trong dataset biascan-950 (id không liền mạch vì đã bỏ sản phẩm trùng).
+def load_books(path: Path | None = None) -> list[dict]:
     keep = ("image_id", "title", "author", "publisher", "supplier", "description", "image_url")
-    books = [
-        {k: row.get(k) or "" for k in keep}
-        for row in _read_rows(Path(path or dataset_path()), keep)
-        if in_catalog(row.get("image_id") or "", catalog_max)
-    ]
+    books = [{k: row.get(k) or "" for k in keep} for row in _read_rows(Path(path or dataset_path()), keep) if row.get("image_id")]
     books.sort(key=lambda b: b["image_id"])
     return books
+
+
+def catalog_ids(path: Path | None = None) -> set[str]:
+    return {r["image_id"] for r in _read_rows(Path(path or dataset_path()), ("image_id",)) if r.get("image_id")}
 
 
 def sample(books: list[dict], seed: int) -> list[dict]:

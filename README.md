@@ -1,10 +1,11 @@
 # BiaScan
 
 Tra cứu sách bằng **ảnh chụp bìa** hoặc **lời mô tả tự nhiên**, kèm chat tư vấn — trên kho cố định **950 đầu sách**
-Fahasa (`fahasa_0` … `fahasa_949`), công bố kèm vector embedding ở
-[`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950): 937 cuốn có mô tả (trung vị 970 ký tự),
-534 tác giả, 66 nhà xuất bản. Lấy từ 950 dòng đầu của
-[`sunbv56/vi-OCR_VQA-desc`](https://huggingface.co/datasets/sunbv56/vi-OCR_VQA-desc).
+Fahasa, công bố kèm vector embedding ở
+[`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950): 933 cuốn có mô tả (trung vị 915 ký tự),
+661 tác giả, 71 nhà xuất bản. Lấy 950 sản phẩm khác nhau đầu tiên của
+[`sunbv56/vi-OCR_VQA-desc`](https://huggingface.co/datasets/sunbv56/vi-OCR_VQA-desc) (dataset gốc lặp lại cùng sản phẩm
+dưới nhiều `image_id`, nên id trong kho không liền mạch).
 
 ```
 Next.js tĩnh ──▶ n8n webhook (token + rate limit theo IP)

@@ -5,12 +5,16 @@ chứng minh năng lực AI/LLM engineering bằng số đo thật, chạy demo 
 
 ## Dữ liệu
 
-- Kho **cố định 950 sách** `fahasa_0` … `fahasa_949` = 950 dòng đầu của `sunbv56/vi-OCR_VQA-desc` (HF):
+- Kho **cố định 950 sách** = 950 sản phẩm khác nhau đầu tiên của `sunbv56/vi-OCR_VQA-desc` (HF):
   `image_id, title, author, publisher, supplier, description, og_description, product_url, image_url, conversations`.
   Không nạp thêm.
+- Dataset gốc lặp lại cùng sản phẩm dưới nhiều `image_id` (12.661 / 33.531 dòng thừa; 950 dòng đầu chỉ có 741 sản phẩm).
+  Chốt 04/11/2026: bỏ trùng theo link sản phẩm (bỏ query string), giữ lần xuất hiện đầu → kho = 741 cuốn cũ + 209 cuốn
+  tiếp theo (`fahasa_0` … `fahasa_1187`, không liền mạch). DB có unique index theo link sản phẩm; eval lấy kho từ
+  dataset `biascan-950` thay vì dải id.
 - Công bố lại kèm `embed_text` + `text_embedding` ở
   [`sunbv56/biascan-950`](https://huggingface.co/datasets/sunbv56/biascan-950).
-- Thống kê: 937 cuốn có mô tả (trung vị 970 ký tự, dài nhất 13.907) → cắt **2.000 ký tự đầu**; 534 tác giả, 66 NXB.
+- Thống kê: 933 cuốn có mô tả (trung vị 915 ký tự, dài nhất 13.907) → cắt **2.000 ký tự đầu**; 661 tác giả, 71 NXB.
 
 ## Kiến trúc
 
@@ -58,7 +62,7 @@ Next.js tĩnh (Caddy trên Fly, biascan.thuanbt.id.vn) ──POST──▶ n8n (
 
 ## Đánh giá (`eval/`, trang `/eval`)
 
-Mọi bộ chỉ lấy sách trong kho 950 cuốn (`--catalog-max 950`).
+Mọi bộ chỉ lấy sách trong kho 950 cuốn (danh sách id lấy từ dataset `biascan-950`).
 
 - 100 ảnh bìa bị biến dạng (xoay, crop, blur, sáng tối — giả ảnh điện thoại).
 - 100 truy vấn "sách về…" do Gemini viết, cấm chứa tên sách.
